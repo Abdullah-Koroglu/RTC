@@ -13,7 +13,7 @@ export class TypedEventEmitter<TEvents extends EventMap> {
 
     return () => {
       bucket?.delete(handler as (payload: any) => void);
-      if (bucket && bucket.size === 0) {
+      if (bucket?.size === 0) {
         this.listeners.delete(event);
       }
     };

@@ -17,6 +17,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
   },
+  "peerDependencies": {
+    "mediasoup-client": "^3.6.108"
+  },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/tsconfig": "workspace:*",

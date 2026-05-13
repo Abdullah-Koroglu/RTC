@@ -1,4 +1,4 @@
-import type { SignalingMessage } from '@/events/types';
+import type { SignalingMessage } from '../events/types';
 
 export interface SignalingTransport {
   connect(): Promise<void>;

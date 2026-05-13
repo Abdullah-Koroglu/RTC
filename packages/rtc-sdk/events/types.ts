@@ -1,4 +1,5 @@
-export type WebRtcSdkEventMap = {
+export interface WebRtcSdkEventMap {
+    [key: string]: unknown;
   'peer.connection-state': { state: RTCPeerConnectionState };
   'peer.ice-connection-state': { state: RTCIceConnectionState };
   'peer.ice-gathering-state': { state: RTCIceGatheringState };
@@ -17,7 +18,7 @@ export type WebRtcSdkEventMap = {
   'reconnect.scheduled': { delayMs: number; attempt: number };
   'reconnect.succeeded': { attempt: number };
   'reconnect.failed': { attempt: number; error: Error };
-};
+}
 
 export interface BaseSignalingMessage {
   type: string;

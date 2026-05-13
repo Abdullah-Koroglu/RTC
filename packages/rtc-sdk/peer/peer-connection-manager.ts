@@ -1,12 +1,12 @@
-import { TypedEventEmitter } from '@/events/event-emitter';
+import { TypedEventEmitter } from '../events/event-emitter';
 import type {
   RtcSdkOptions,
   SdpAnswerMessage,
   SdpOfferMessage,
   IceCandidateMessage,
   WebRtcSdkEventMap,
-} from '@/events/types';
-import type { SignalingBridge } from '@/signaling/signaling-bridge';
+} from '../events/types';
+import type { SignalingBridge } from '../signaling/signaling-bridge';
 
 export class PeerConnectionManager {
   private peerConnection: RTCPeerConnection | null = null;
@@ -114,7 +114,7 @@ export class PeerConnectionManager {
   }
 
   private bindSignaling(): void {
-    this.signaling.on('signaling.message', async ({ message }) => {
+    this.signaling.on('signaling.message', async ({ message }: { message: any }) => {
       if (message.peerId === this.options.peerId || message.roomId !== this.options.roomId) {
         return;
       }

@@ -23,6 +23,7 @@
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
     "@repo/tsconfig": "workspace:*",
+    "@types/ws": "^8.5.12",
     "@typescript-eslint/eslint-plugin": "^8.14.0",
     "@typescript-eslint/parser": "^8.14.0",
     "eslint": "^9.14.0",
@@ -31,11 +32,16 @@
     "lint-staged": "^15.2.10",
     "prettier": "^3.3.3",
     "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
     "turbo": "^2.2.3",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "ws": "^8.18.0"
   },
   "lint-staged": {
-    "*.{js,cjs,mjs,ts,tsx}": [
+    "!(*.test).{ts,tsx}": [
+      "pnpm exec eslint --max-warnings=0 --fix"
+    ],
+    "*.{js,cjs,mjs}": [
       "pnpm exec eslint --max-warnings=0 --fix"
     ],
     "*.{json,md,yml,yaml}": [

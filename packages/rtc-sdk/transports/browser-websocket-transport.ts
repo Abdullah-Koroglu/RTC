@@ -1,12 +1,13 @@
-import type { SignalingMessage } from '@/events/types';
-import { TypedEventEmitter } from '@/events/event-emitter';
-import type { SignalingTransport } from '@/transports/types';
+import type { SignalingMessage } from '../events/types';
+import { TypedEventEmitter } from '../events/event-emitter';
+import type { SignalingTransport } from './types';
 
-type TransportEvents = {
+interface TransportEvents {
+  [key: string]: unknown;
   message: SignalingMessage;
   open: Record<string, never>;
   close: { reason?: string };
-};
+}
 
 export interface BrowserWebSocketTransportOptions {
   url: string;
@@ -43,7 +44,7 @@ export class BrowserWebSocketTransport implements SignalingTransport {
       };
 
       socket.onclose = (event) => {
-        this.emitter.emit('close', { reason: event.reason || undefined });
+        this.emitter.emit('close', { reason: event.reason ?? undefined });
       };
 
       socket.onerror = () => {
@@ -65,7 +66,7 @@ export class BrowserWebSocketTransport implements SignalingTransport {
   }
 
   async send(message: SignalingMessage): Promise<void> {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    if (this.socket?.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket transport is not connected');
     }
 
@@ -81,7 +82,7 @@ export class BrowserWebSocketTransport implements SignalingTransport {
   }
 
   onClose(handler: (reason?: string) => void): () => void {
-    return this.emitter.on('close', ({ reason }) => handler(reason));
+    return this.emitter.on('close', ({ reason }: { reason?: string }) => handler(reason));
   }
 
   isConnected(): boolean {

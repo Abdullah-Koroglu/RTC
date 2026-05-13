@@ -1,5 +1,5 @@
-import { TypedEventEmitter } from '@/events/event-emitter';
-import type { WebRtcSdkEventMap } from '@/events/types';
+import { TypedEventEmitter } from '../events/event-emitter';
+import type { WebRtcSdkEventMap } from '../events/types';
 
 export interface GetMediaOptions {
   audio?: boolean | MediaTrackConstraints;

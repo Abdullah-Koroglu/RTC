@@ -1,17 +1,17 @@
-import { TypedEventEmitter } from '@/events/event-emitter';
-import type { SignalingMessage, WebRtcSdkEventMap } from '@/events/types';
-import type { SignalingTransport } from '@/transports/types';
+import { TypedEventEmitter } from '../events/event-emitter';
+import type { SignalingMessage, WebRtcSdkEventMap } from '../events/types';
+import type { SignalingTransport } from '../transports/types';
 
 export class SignalingBridge {
   private readonly emitter = new TypedEventEmitter<WebRtcSdkEventMap>();
-  private readonly unsubs: Array<() => void> = [];
+  private readonly unsubs: (() => void)[] = [];
 
   constructor(private readonly transport: SignalingTransport) {}
 
   on = this.emitter.on.bind(this.emitter);
 
   async connect(): Promise<void> {
-    this.unsubs.push(this.transport.onMessage((message) => {
+    this.unsubs.push(this.transport.onMessage((message: SignalingMessage) => {
       this.emitter.emit('signaling.message', { message });
     }));
 
@@ -19,8 +19,12 @@ export class SignalingBridge {
       this.emitter.emit('signaling.connected', {});
     }));
 
-    this.unsubs.push(this.transport.onClose((reason) => {
-      this.emitter.emit('signaling.disconnected', { reason });
+    this.unsubs.push(this.transport.onClose((reason?: string) => {
+      const disconnectPayload: { reason?: string } = {};
+      if (reason && typeof reason === 'string') {
+        disconnectPayload.reason = reason;
+      }
+      this.emitter.emit('signaling.disconnected', disconnectPayload);
     }));
 
     await this.transport.connect();
@@ -42,3 +46,4 @@ export class SignalingBridge {
     this.emitter.clear();
   }
 }
+
