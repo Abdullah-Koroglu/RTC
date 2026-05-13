@@ -46,6 +46,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const mediaClientRef = useRef<MediasoupClient | null>(null);
   const remoteProducersRef = useRef<Map<string, string>>(new Map());
   const remoteConsumersRef = useRef<Map<string, string>>(new Map());
+  const producerOwnerRef = useRef<Map<string, string>>(new Map());
+  const subscribedProducerIdsRef = useRef<Set<string>>(new Set());
   const initRef = useRef(false);
 
   const signalingOptions = {
@@ -125,12 +127,47 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
       remoteProducersRef.current.clear();
       remoteConsumersRef.current.clear();
+      producerOwnerRef.current.clear();
+      subscribedProducerIdsRef.current.clear();
       setRoomState('idle');
     } catch (err) {
       console.error('Error leaving room:', err);
       setRoomState('idle');
     }
   }, [remoteStreams, localStream, signalingClient, roomId]);
+
+  const syncRemoteProducers = useCallback(async () => {
+    if (!mediaClientRef.current || roomState !== 'joined') {
+      return;
+    }
+
+    const producers = await mediaClientRef.current.listRemoteProducers();
+
+    for (const producer of producers) {
+      if (producer.peerId === peerId || subscribedProducerIdsRef.current.has(producer.producerId)) {
+        continue;
+      }
+
+      const stream = await mediaClientRef.current.subscribeMedia(producer.producerId, producer.peerId);
+
+      setRemoteStreams((prev) => {
+        const updated = new Map(prev);
+        const target = updated.get(producer.peerId) ?? new MediaStream();
+
+        for (const track of stream.getTracks()) {
+          if (!target.getTracks().some((existingTrack) => existingTrack.id === track.id)) {
+            target.addTrack(track);
+          }
+        }
+
+        updated.set(producer.peerId, target);
+        return updated;
+      });
+
+      producerOwnerRef.current.set(producer.producerId, producer.peerId);
+      subscribedProducerIdsRef.current.add(producer.producerId);
+    }
+  }, [peerId, roomState]);
 
   const publishMedia = useCallback(
     async (constraints: MediaStreamConstraints = { audio: true, video: true }): Promise<MediaStream | null> => {
@@ -141,6 +178,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
         const stream = await mediaClientRef.current.publishMedia(constraints);
         setLocalStream(stream);
+        await syncRemoteProducers();
         return stream;
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to publish media');
@@ -148,7 +186,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         return null;
       }
     },
-    [],
+    [syncRemoteProducers],
   );
 
   const unpublishMedia = useCallback((kind: 'audio' | 'video') => {
@@ -195,6 +233,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       signalingClient.on('room.participant-joined', ({ participantId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
           remoteProducersRef.current.set(remotePeerId, '');
+          void syncRemoteProducers().catch((err) => {
+            const error = err instanceof Error ? err : new Error('Failed to sync remote producers');
+            setError(error);
+          });
         }
       }),
     );
@@ -220,6 +262,18 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
             }
           });
           consumersToRemove.forEach((cid) => remoteConsumersRef.current.delete(cid));
+
+          const producerIdsToDelete: string[] = [];
+          producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
+            if (ownerPeerId === remotePeerId) {
+              producerIdsToDelete.push(producerId);
+            }
+          });
+
+          producerIdsToDelete.forEach((producerId) => {
+            producerOwnerRef.current.delete(producerId);
+            subscribedProducerIdsRef.current.delete(producerId);
+          });
         }
       }),
     );
@@ -236,6 +290,26 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       listeners.forEach((unsub) => unsub());
     };
   }, [signalingClient, roomState, peerId]);
+
+  useEffect(() => {
+    if (roomState !== 'joined') {
+      return;
+    }
+
+    const runSync = () => {
+      void syncRemoteProducers().catch((err) => {
+        const error = err instanceof Error ? err : new Error('Failed to sync remote producers');
+        setError(error);
+      });
+    };
+
+    runSync();
+    const intervalId = setInterval(runSync, 1500);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [roomState, syncRemoteProducers]);
 
   useEffect(() => {
     if (autoJoin && isSignalingConnected && !initRef.current && roomState === 'idle') {

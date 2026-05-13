@@ -82,6 +82,13 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
     });
   });
 
+  app.get('/rooms/:roomId/peers/:peerId/producers', async (request) => {
+    const params = roomPeerParams.parse(request.params);
+    return {
+      producers: ctx.roomManager.listRemoteProducers(params.roomId, params.peerId),
+    };
+  });
+
   app.delete('/rooms/:roomId/peers/:peerId', async (request) => {
     const params = roomPeerParams.parse(request.params);
     ctx.roomManager.disconnectPeer(params.roomId, params.peerId);

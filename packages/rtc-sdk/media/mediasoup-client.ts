@@ -34,6 +34,10 @@ export interface RemoteProducer {
   kind: 'audio' | 'video';
 }
 
+interface RemoteProducerListResponse {
+  producers: RemoteProducer[];
+}
+
 export interface RemoteConsumer {
   consumerId: string;
   producerId: string;
@@ -162,7 +166,7 @@ export class MediasoupClient {
       throw new Error('Transports not initialized');
     }
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const stream = await this.createLocalMediaStream(constraints);
     this.localStream = { stream };
 
     // Produce audio
@@ -192,6 +196,16 @@ export class MediasoupClient {
     }
 
     return stream;
+  }
+
+  async listRemoteProducers(): Promise<RemoteProducer[]> {
+    const response = (await this.apiCall(
+      'GET',
+      `/rooms/${this.options.roomId}/peers/${this.options.peerId}/producers`,
+      {},
+    )) as RemoteProducerListResponse;
+
+    return response.producers;
   }
 
   /**
@@ -320,6 +334,55 @@ export class MediasoupClient {
     } catch {
       // Ignore errors on disconnect
     }
+  }
+
+  private async createLocalMediaStream(constraints: MediaStreamConstraints): Promise<MediaStream> {
+    const mediaDevices = globalThis.navigator?.mediaDevices;
+    if (mediaDevices?.getUserMedia) {
+      return mediaDevices.getUserMedia(constraints);
+    }
+
+    if (!constraints.video) {
+      throw new Error('getUserMedia is unavailable in this context');
+    }
+
+    if (typeof document === 'undefined') {
+      throw new Error('Cannot create fallback video stream outside browser context');
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 640;
+    canvas.height = 360;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Canvas context is unavailable for fallback stream');
+    }
+
+    let frame = 0;
+    const drawFrame = () => {
+      const hue = (frame * 3) % 360;
+      context.fillStyle = `hsl(${hue}, 70%, 45%)`;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#ffffff';
+      context.font = 'bold 24px sans-serif';
+      context.fillText(`RTC Fallback - ${this.options.peerId}`, 24, 48);
+      context.font = '18px sans-serif';
+      context.fillText(new Date().toISOString(), 24, 84);
+      frame += 1;
+    };
+
+    drawFrame();
+    const timerId = setInterval(drawFrame, 100);
+    const stream = canvas.captureStream(10);
+
+    for (const track of stream.getVideoTracks()) {
+      track.addEventListener('ended', () => {
+        clearInterval(timerId);
+      });
+    }
+
+    return stream;
   }
 
   /**

@@ -142,6 +142,27 @@ export class RoomManager {
     };
   }
 
+  listRemoteProducers(roomId: RoomId, peerId: string): Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video' }> {
+    const producers: Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video' }> = [];
+
+    for (const peer of this.peers.listRoomPeers(roomId)) {
+      if (peer.id === peerId) {
+        continue;
+      }
+
+      for (const producer of peer.producers.values()) {
+        const kind = producer.kind === 'audio' ? 'audio' : 'video';
+        producers.push({
+          producerId: producer.id,
+          peerId: peer.id,
+          kind,
+        });
+      }
+    }
+
+    return producers;
+  }
+
   disconnectPeer(roomId: RoomId, peerId: string): void {
     const removed = this.peers.remove(roomId, peerId);
     if (!removed) {

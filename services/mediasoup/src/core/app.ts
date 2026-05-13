@@ -11,7 +11,7 @@ export interface AppContext {
   roomManager: RoomManager;
 }
 
-export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
+export function buildApp(ctx: AppContext): FastifyInstance {
   const app = Fastify({
     loggerInstance: logger,
     disableRequestLogging: true,
@@ -20,7 +20,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   });
 
   // Register CORS
-  await app.register(cors, {
+  void app.register(cors, {
     origin: [
       'http://app.local.rtc',
       'http://localhost:3000',
@@ -30,7 +30,7 @@ export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
     credentials: true,
   });
 
-    app.get('/health', () => ({
+  app.get('/health', () => ({
     status: 'ok',
     uptimeSeconds: Math.floor(process.uptime()),
     workers: ctx.workerManager.getSnapshots(),
