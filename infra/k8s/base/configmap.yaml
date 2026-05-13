@@ -14,5 +14,6 @@ data:
   WEB_PORT: '3000'
   NEXT_PUBLIC_API_URL: https://api.example.com
   NEXT_PUBLIC_SIGNALING_URL: wss://signal.example.com/ws
+  NEXT_PUBLIC_MEDIASOUP_URL: http://mediasoup.rtc-apps.svc.cluster.local:4020
   CORS_ORIGIN: https://app.example.com
   ALLOWED_ORIGINS: https://app.example.com

@@ -21,6 +21,9 @@ patches:
       - op: replace
         path: /spec/rules/2/host
         value: signal.local.rtc
+      - op: replace
+        path: /spec/rules/3/host
+        value: mediasoup.local.rtc
   - target:
       kind: ConfigMap
       name: rtc-app-config
@@ -35,6 +38,9 @@ patches:
       - op: replace
         path: /data/NEXT_PUBLIC_SIGNALING_URL
         value: ws://signal.local.rtc/ws
+      - op: replace
+        path: /data/NEXT_PUBLIC_MEDIASOUP_URL
+        value: http://mediasoup.local.rtc
       - op: replace
         path: /data/CORS_ORIGIN
         value: http://app.local.rtc

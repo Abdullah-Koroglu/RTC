@@ -19,6 +19,7 @@ spec:
         - app.example.com
         - api.example.com
         - signal.example.com
+        - mediasoup.example.com
       secretName: rtc-platform-tls
   rules:
     - host: app.example.com
@@ -49,5 +50,15 @@ spec:
             backend:
               service:
                 name: signaling
+                port:
+                  name: http
+    - host: mediasoup.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mediasoup
                 port:
                   name: http
