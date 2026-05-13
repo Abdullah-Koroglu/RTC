@@ -10,8 +10,12 @@ patches:
     patch: |-
       - op: remove
         path: /metadata/annotations/cert-manager.io~1cluster-issuer
-      - op: remove
-        path: /spec/tls
+      - op: add
+        path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-redirect
+        value: "true"
+      - op: replace
+        path: /metadata/annotations/nginx.ingress.kubernetes.io~1cors-allow-origin
+        value: "https://app.local.rtc, http://app.local.rtc, http://localhost:3000"
       - op: replace
         path: /spec/rules/0/host
         value: app.local.rtc
@@ -24,6 +28,21 @@ patches:
       - op: replace
         path: /spec/rules/3/host
         value: mediasoup.local.rtc
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: app.local.rtc
+      - op: replace
+        path: /spec/tls/0/hosts/1
+        value: api.local.rtc
+      - op: replace
+        path: /spec/tls/0/hosts/2
+        value: signal.local.rtc
+      - op: replace
+        path: /spec/tls/0/hosts/3
+        value: mediasoup.local.rtc
+      - op: replace
+        path: /spec/tls/0/secretName
+        value: rtc-local-tls
   - target:
       kind: ConfigMap
       name: rtc-app-config
@@ -34,19 +53,19 @@ patches:
         value: development
       - op: replace
         path: /data/NEXT_PUBLIC_API_URL
-        value: http://api.local.rtc
+        value: https://api.local.rtc
       - op: replace
         path: /data/NEXT_PUBLIC_SIGNALING_URL
-        value: ws://signal.local.rtc/ws
+        value: wss://signal.local.rtc/ws
       - op: replace
         path: /data/NEXT_PUBLIC_MEDIASOUP_URL
-        value: http://mediasoup.local.rtc
+        value: https://mediasoup.local.rtc
       - op: replace
         path: /data/CORS_ORIGIN
-        value: http://app.local.rtc
+        value: https://app.local.rtc
       - op: replace
         path: /data/ALLOWED_ORIGINS
-        value: http://app.local.rtc
+        value: https://app.local.rtc
   - target:
       kind: ConfigMap
       name: rtc-turn-config
