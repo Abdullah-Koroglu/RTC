@@ -7,8 +7,8 @@ COPY infra/coturn/coturn.conf /etc/coturn/coturn.conf
 COPY infra/coturn/entrypoint.sh /entrypoint.sh
 
 RUN chmod 0755 /entrypoint.sh \
-  && (getent group turnserver >/dev/null 2>&1 || addgroup -S turnserver) \
-  && (id -u turnserver >/dev/null 2>&1 || adduser -S -D -h /var/lib/turnserver -G turnserver turnserver) \
+  && (getent group turnserver >/dev/null 2>&1 || addgroup -S -g 10001 turnserver) \
+  && (id -u turnserver >/dev/null 2>&1 || adduser -S -D -u 10001 -h /var/lib/turnserver -G turnserver turnserver) \
   && mkdir -p /var/lib/turnserver /etc/coturn/tls \
   && chown -R turnserver:turnserver /var/lib/turnserver /etc/coturn
 

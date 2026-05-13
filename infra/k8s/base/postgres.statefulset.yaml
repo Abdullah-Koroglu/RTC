@@ -67,11 +67,8 @@ spec:
               memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
-            runAsNonRoot: true
-            runAsUser: 999
-            runAsGroup: 999
-            capabilities:
-              drop: ['ALL']
+            runAsUser: 0
+            runAsGroup: 0
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data

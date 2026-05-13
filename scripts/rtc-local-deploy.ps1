@@ -92,11 +92,13 @@ try {
 
   Run "docker build --no-cache -t $RegistryHost/rtc-coturn:local -f infra/coturn/Dockerfile ."
   Run "docker push $RegistryHost/rtc-coturn:local"
+
+  Run "k3d image import $RegistryHost/rtc-web:local $RegistryHost/rtc-api:local $RegistryHost/rtc-signaling:local $RegistryHost/rtc-mediasoup:local $RegistryHost/rtc-coturn:local -c $ClusterName"
 }
 finally {
   Pop-Location
 }
-Done 'All images built and pushed.'
+Done 'All images built, pushed, and imported into k3d nodes.'
 
 Info 'Step 6/10: Create namespaces from namespace*.yaml.'
 Get-ChildItem -Path $BasePath -Filter 'namespace*.yaml' |
@@ -116,9 +118,9 @@ Run "kubectl create secret generic rtc-mediasoup-secret --namespace $AppNamespac
 
 Run "kubectl create secret generic rtc-turn-secret --namespace $AppNamespace --from-literal=TURN_SHARED_SECRET=rtc-local-turn-secret --dry-run=client -o yaml | kubectl apply -f -"
 
-Run "kubectl create secret generic rtc-turn-tls --namespace $AppNamespace --from-literal=tls.crt=local-cert --from-literal=tls.key=local-key --dry-run=client -o yaml | kubectl apply -f -"
+Run "kubectl create secret generic rtc-turn-tls --namespace $AppNamespace --type kubernetes.io/tls --from-literal=tls.crt=local-cert --from-literal=tls.key=local-key --dry-run=client -o yaml | kubectl apply -f -"
 
-Run "kubectl create secret generic rtc-platform-tls --namespace $AppNamespace --from-literal=tls.crt=local-cert --from-literal=tls.key=local-key --dry-run=client -o yaml | kubectl apply -f -"
+Run "kubectl create secret generic rtc-platform-tls --namespace $AppNamespace --type kubernetes.io/tls --from-literal=tls.crt=local-cert --from-literal=tls.key=local-key --dry-run=client -o yaml | kubectl apply -f -"
 
 Done 'Secrets applied.'
 
@@ -248,7 +250,7 @@ images:
 "@
 
 $kustomizationPath = Join-Path $OverlayPath 'kustomization.yaml'
-Set-Content -Path $kustomizationPath -Value $kustomizationContent -Encoding utf8
+Set-Content -Path $kustomizationPath -Value $kustomizationContent -Encoding ascii
 Done 'Local overlay kustomization overwritten.'
 
 Info 'Step 9/10: Apply local overlay.'

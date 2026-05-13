@@ -42,7 +42,6 @@ data:
     min-port=${TURN_RELAY_MIN_PORT}
     max-port=${TURN_RELAY_MAX_PORT}
     no-multicast-peers
-    no-loopback-peers
 
     # Quotas and abuse protection
     user-quota=12
@@ -51,8 +50,6 @@ data:
 
     # Operational defaults
     no-cli
-    proc-user=turnserver
-    proc-group=turnserver
     pidfile=/tmp/turnserver.pid
     log-file=stdout
     simple-log

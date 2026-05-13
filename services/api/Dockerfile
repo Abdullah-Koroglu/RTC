@@ -23,15 +23,15 @@ COPY . .
 RUN pnpm --filter @repo/api exec tsup src/index.ts --format esm --target node20 --out-dir dist --clean
 
 FROM node:20-alpine AS runner
-WORKDIR /app
+WORKDIR /repo
 ENV NODE_ENV=production
 RUN addgroup -S nodejs && adduser -S appuser -G nodejs
 
-COPY --from=builder /repo/services/api/dist ./dist
-COPY --from=builder /repo/services/api/package.json ./package.json
+COPY --from=deps /repo/ /repo/
+COPY --from=builder /repo/services/api/dist /repo/services/api/dist
 
 USER appuser
 
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD wget -qO- http://127.0.0.1:4000/health || exit 1
-CMD ["node", "dist/index.js"]
+CMD ["node", "services/api/dist/index.js"]

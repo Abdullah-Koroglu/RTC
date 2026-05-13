@@ -73,7 +73,7 @@ spec:
               memory: 2Gi
           readinessProbe:
             httpGet:
-              path: /
+              path: /health
               port: http
             initialDelaySeconds: 8
             periodSeconds: 8
@@ -81,7 +81,7 @@ spec:
             failureThreshold: 8
           livenessProbe:
             httpGet:
-              path: /
+              path: /health
               port: http
             initialDelaySeconds: 25
             periodSeconds: 15

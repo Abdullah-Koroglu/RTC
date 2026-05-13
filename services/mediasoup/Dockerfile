@@ -26,15 +26,15 @@ COPY . .
 RUN pnpm --filter @repo/mediasoup exec tsup src/index.ts --format esm --target node20 --out-dir dist --clean
 
 FROM node:20-bookworm-slim AS runner
-WORKDIR /app
+WORKDIR /repo
 ENV NODE_ENV=production
 RUN groupadd --system nodejs && useradd --system --gid nodejs appuser
 
-COPY --from=builder /repo/services/mediasoup/dist ./dist
-COPY --from=builder /repo/services/mediasoup/package.json ./package.json
+COPY --from=deps /repo/ /repo/
+COPY --from=builder /repo/services/mediasoup/dist /repo/services/mediasoup/dist
 
 USER appuser
 
 EXPOSE 4020
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 CMD node -e "fetch('http://127.0.0.1:4020/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
-CMD ["node", "dist/index.js"]
+CMD ["node", "services/mediasoup/dist/index.js"]

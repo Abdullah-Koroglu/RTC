@@ -11,6 +11,6 @@ if [ -z "${TURN_EXTERNAL_IP:-}" ]; then
   exit 1
 fi
 
-envsubst < /etc/coturn/coturn.conf > /etc/coturn/turnserver.conf
+envsubst < /etc/coturn/coturn.conf > /tmp/turnserver.conf
 
-exec /usr/bin/turnserver -c /etc/coturn/turnserver.conf --no-daemon
+exec /usr/bin/turnserver -c /tmp/turnserver.conf

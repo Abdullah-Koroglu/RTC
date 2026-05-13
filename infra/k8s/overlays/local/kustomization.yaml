@@ -1,4 +1,4 @@
-﻿apiVersion: kustomize.config.k8s.io/v1beta1
+apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
@@ -8,14 +8,10 @@ patches:
       name: rtc-ingress
       namespace: rtc-apps
     patch: |-
-      - op: replace
-        path: /metadata/annotations/kubernetes.io~1ingress.class
-        value: nginx
       - op: remove
         path: /metadata/annotations/cert-manager.io~1cluster-issuer
-      - op: replace
-        path: /spec/ingressClassName
-        value: nginx
+      - op: remove
+        path: /spec/tls
       - op: replace
         path: /spec/rules/0/host
         value: app.local.rtc
@@ -25,8 +21,6 @@ patches:
       - op: replace
         path: /spec/rules/2/host
         value: signal.local.rtc
-      - op: remove
-        path: /spec/tls
   - target:
       kind: ConfigMap
       name: rtc-app-config
@@ -93,6 +87,22 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 1
+  - target:
+      kind: Deployment
+      name: mediasoup
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: coturn
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
 images:
   - name: ghcr.io/your-org/rtc-web
     newName: localhost:5111/rtc-web
@@ -109,4 +119,3 @@ images:
   - name: ghcr.io/your-org/rtc-coturn
     newName: localhost:5111/rtc-coturn
     newTag: local
-
