@@ -1,0 +1,26 @@
+{
+  "name": "@repo/rtc-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./peer": "./peer/peer-connection-manager.ts",
+    "./media": "./media/media-manager.ts",
+    "./signaling": "./signaling/signaling-bridge.ts",
+    "./events": "./events/types.ts",
+    "./transports": "./transports/types.ts",
+    "./transports/browser-websocket": "./transports/browser-websocket-transport.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/tsconfig": "workspace:*",
+    "eslint": "^9.14.0",
+    "typescript": "^5.6.3"
+  }
+}

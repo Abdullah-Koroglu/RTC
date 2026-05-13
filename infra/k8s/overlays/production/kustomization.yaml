@@ -1,0 +1,118 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - target:
+      kind: Ingress
+      name: rtc-ingress
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-prod
+      - op: replace
+        path: /spec/rules/0/host
+        value: app.example.com
+      - op: replace
+        path: /spec/rules/1/host
+        value: api.example.com
+      - op: replace
+        path: /spec/rules/2/host
+        value: signal.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: app.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/1
+        value: api.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/2
+        value: signal.example.com
+  - target:
+      kind: ConfigMap
+      name: rtc-app-config
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /data/NODE_ENV
+        value: production
+      - op: replace
+        path: /data/NEXT_PUBLIC_API_URL
+        value: https://api.example.com
+      - op: replace
+        path: /data/NEXT_PUBLIC_SIGNALING_URL
+        value: wss://signal.example.com/ws
+  - target:
+      kind: ConfigMap
+      name: rtc-turn-config
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /data/TURN_REALM
+        value: turn.example.com
+      - op: replace
+        path: /data/TURN_EXTERNAL_IP
+        value: 203.0.113.10
+  - target:
+      kind: ConfigMap
+      name: rtc-mediasoup-config
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /data/MEDIASOUP_ANNOUNCED_IP
+        value: 203.0.113.20
+      - op: replace
+        path: /data/MEDIASOUP_WORKER_COUNT
+        value: '6'
+  - target:
+      kind: Deployment
+      name: api
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: ghcr.io/your-org/rtc-api:prod
+  - target:
+      kind: Deployment
+      name: signaling
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: ghcr.io/your-org/rtc-signaling:prod
+  - target:
+      kind: Deployment
+      name: web
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: ghcr.io/your-org/rtc-web:prod
+  - target:
+      kind: Deployment
+      name: coturn
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: ghcr.io/your-org/rtc-coturn:prod
+  - target:
+      kind: Deployment
+      name: mediasoup
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: ghcr.io/your-org/rtc-mediasoup:prod
+images:
+  - name: ghcr.io/your-org/rtc-web
+    newTag: prod
+  - name: ghcr.io/your-org/rtc-api
+    newTag: prod
+  - name: ghcr.io/your-org/rtc-signaling
+    newTag: prod
+  - name: ghcr.io/your-org/rtc-mediasoup
+    newTag: prod
+  - name: ghcr.io/your-org/rtc-coturn
+    newTag: prod

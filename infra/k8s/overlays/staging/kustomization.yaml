@@ -1,0 +1,84 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+patches:
+  - target:
+      kind: Ingress
+      name: rtc-ingress
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/cert-manager.io~1cluster-issuer
+        value: letsencrypt-staging
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: app.staging.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/1
+        value: api.staging.example.com
+      - op: replace
+        path: /spec/tls/0/hosts/2
+        value: signal.staging.example.com
+      - op: replace
+        path: /spec/rules/0/host
+        value: app.staging.example.com
+      - op: replace
+        path: /spec/rules/1/host
+        value: api.staging.example.com
+      - op: replace
+        path: /spec/rules/2/host
+        value: signal.staging.example.com
+  - target:
+      kind: ConfigMap
+      name: rtc-app-config
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /data/NODE_ENV
+        value: staging
+      - op: replace
+        path: /data/NEXT_PUBLIC_API_URL
+        value: https://api.staging.example.com
+      - op: replace
+        path: /data/NEXT_PUBLIC_SIGNALING_URL
+        value: wss://signal.staging.example.com/ws
+      - op: replace
+        path: /data/CORS_ORIGIN
+        value: https://app.staging.example.com
+      - op: replace
+        path: /data/ALLOWED_ORIGINS
+        value: https://app.staging.example.com
+  - target:
+      kind: ConfigMap
+      name: rtc-turn-config
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /data/TURN_REALM
+        value: turn.staging.example.com
+      - op: replace
+        path: /data/TURN_EXTERNAL_IP
+        value: 198.51.100.10
+  - target:
+      kind: ConfigMap
+      name: rtc-mediasoup-config
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /data/MEDIASOUP_ANNOUNCED_IP
+        value: 198.51.100.20
+      - op: replace
+        path: /data/MEDIASOUP_WORKER_COUNT
+        value: '3'
+images:
+  - name: ghcr.io/your-org/rtc-web
+    newTag: staging
+  - name: ghcr.io/your-org/rtc-api
+    newTag: staging
+  - name: ghcr.io/your-org/rtc-signaling
+    newTag: staging
+  - name: ghcr.io/your-org/rtc-mediasoup
+    newTag: staging
+  - name: ghcr.io/your-org/rtc-coturn
+    newTag: staging

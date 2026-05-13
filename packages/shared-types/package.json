@@ -1,0 +1,31 @@
+{
+  "name": "@repo/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./events": "./src/events/index.ts",
+    "./rooms": "./src/rooms/index.ts",
+    "./websocket": "./src/websocket/index.ts",
+    "./rtc": "./src/rtc/index.ts",
+    "./auth": "./src/auth/index.ts",
+    "./room": "./src/room.ts",
+    "./signaling": "./src/signaling.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/tsconfig": "workspace:*",
+    "@types/node": "^22.9.0",
+    "eslint": "^9.14.0",
+    "typescript": "^5.6.3"
+  }
+}

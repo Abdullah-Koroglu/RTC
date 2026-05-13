@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - namespace-data.yaml
+  - namespace-observability.yaml
+  - configmap.yaml
+  - mediasoup.configmap.yaml
+  - coturn.configmap.yaml
+  - secret.example.yaml
+  - mediasoup.secret.example.yaml
+  - postgres.secret.example.yaml
+  - coturn.secret.example.yaml
+  - coturn.tls.secret.example.yaml
+  - api.deployment.yaml
+  - api.service.yaml
+  - signaling.deployment.yaml
+  - signaling.service.yaml
+  - web.deployment.yaml
+  - web.service.yaml
+  - mediasoup.deployment.yaml
+  - mediasoup.service.yaml
+  - coturn.deployment.yaml
+  - coturn.service.yaml
+  - hpa.yaml
+  - signaling.hpa.yaml
+  - web.hpa.yaml
+  - mediasoup.hpa.yaml
+  - coturn.hpa.yaml
+  - redis.configmap.yaml
+  - redis.service.yaml
+  - redis.statefulset.yaml
+  - postgres.service.yaml
+  - postgres.statefulset.yaml
+  - ingress.yaml

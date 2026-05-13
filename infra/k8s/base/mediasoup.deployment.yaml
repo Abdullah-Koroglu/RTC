@@ -1,0 +1,151 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mediasoup
+  namespace: rtc-apps
+  labels:
+    app: mediasoup
+    app.kubernetes.io/part-of: rtc-platform
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: mediasoup
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/port: '4020'
+        prometheus.io/path: /metrics
+      labels:
+        app: mediasoup
+        app.kubernetes.io/part-of: rtc-platform
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mediasoup
+          image: ghcr.io/your-org/rtc-mediasoup:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 4020
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: rtc-mediasoup-secret
+                  key: NODE_ENV
+            - name: LOG_LEVEL
+              valueFrom:
+                secretKeyRef:
+                  name: rtc-mediasoup-secret
+                  key: LOG_LEVEL
+            - name: HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: HOST
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: PORT
+            - name: MEDIASOUP_WORKER_COUNT
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_WORKER_COUNT
+            - name: MEDIASOUP_WORKER_RTC_MIN_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_WORKER_RTC_MIN_PORT
+            - name: MEDIASOUP_WORKER_RTC_MAX_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_WORKER_RTC_MAX_PORT
+            - name: MEDIASOUP_LISTEN_IP
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_LISTEN_IP
+            - name: MEDIASOUP_ANNOUNCED_IP
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_ANNOUNCED_IP
+            - name: MEDIASOUP_ENABLE_UDP
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_ENABLE_UDP
+            - name: MEDIASOUP_ENABLE_TCP
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_ENABLE_TCP
+            - name: MEDIASOUP_PREFER_UDP
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_PREFER_UDP
+            - name: MEDIASOUP_INITIAL_AVAILABLE_OUTGOING_BITRATE
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_INITIAL_AVAILABLE_OUTGOING_BITRATE
+            - name: MEDIASOUP_MAX_INCOMING_BITRATE
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_MAX_INCOMING_BITRATE
+            - name: MEDIASOUP_LOG_TAGS
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_LOG_TAGS
+            - name: MEDIASOUP_CODECS_JSON
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-mediasoup-config
+                  key: MEDIASOUP_CODECS_JSON
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: 3000m
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 8
+            periodSeconds: 8
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 25
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities:
+              drop: ['ALL']

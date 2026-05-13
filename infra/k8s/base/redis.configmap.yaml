@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: rtc-data
+  labels:
+    app.kubernetes.io/part-of: rtc-platform
+data:
+  redis.conf: |
+    appendonly yes
+    save 60 1000
+    maxmemory-policy allkeys-lru

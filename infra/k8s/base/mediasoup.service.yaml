@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mediasoup
+  namespace: rtc-apps
+  labels:
+    app: mediasoup
+    app.kubernetes.io/part-of: rtc-platform
+spec:
+  type: ClusterIP
+  selector:
+    app: mediasoup
+  ports:
+    - name: http
+      protocol: TCP
+      port: 4020
+      targetPort: http

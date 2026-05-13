@@ -1,0 +1,232 @@
+import { logger } from '@/core/logger';
+import { ConsumerManager } from '@/consumers/consumer-manager';
+import { PeerManager } from '@/peers/peer-manager';
+import { ProducerManager } from '@/producers/producer-manager';
+import { RouterManager } from '@/routers/router-manager';
+import { TransportManager } from '@/transports/transport-manager';
+import { WorkerManager, type WorkerReplacedEvent } from '@/workers/worker-manager';
+import type {
+  ConsumerId,
+  CreateConsumerInput,
+  CreateProducerInput,
+  CreateTransportInput,
+  Producer,
+  ProducerId,
+  RoomId,
+  RtpCapabilities,
+  TransportConnectInput,
+  TransportId,
+} from '@/types/mediasoup';
+
+interface RoomRecord {
+  roomId: RoomId;
+  createdAt: number;
+}
+
+export class RoomManager {
+  private readonly rooms = new Map<RoomId, RoomRecord>();
+  private readonly routers: RouterManager;
+  private readonly peers = new PeerManager();
+  private readonly transports = new TransportManager();
+  private readonly producers = new ProducerManager();
+  private readonly consumers = new ConsumerManager();
+
+  constructor(private readonly workerManager: WorkerManager) {
+    this.routers = new RouterManager(workerManager);
+
+    this.workerManager.on('worker-replaced', (event: WorkerReplacedEvent) => {
+      void this.recoverRoomsForWorker(event);
+    });
+  }
+
+  async joinRoom(roomId: RoomId, peerId: string): Promise<{ routerRtpCapabilities: RtpCapabilities }> {
+    const { router } = await this.routers.getOrCreate(roomId);
+    this.peers.getOrCreate(roomId, peerId);
+
+    if (!this.rooms.has(roomId)) {
+      this.rooms.set(roomId, {
+        roomId,
+        createdAt: Date.now(),
+      });
+      logger.info({ roomId }, 'room_created');
+    }
+
+    return {
+      routerRtpCapabilities: router.rtpCapabilities,
+    };
+  }
+
+  async createTransport(input: CreateTransportInput): Promise<{
+    transportId: TransportId;
+    iceParameters: unknown;
+    iceCandidates: unknown;
+    dtlsParameters: unknown;
+  }> {
+    const roomRouter = this.routers.get(input.roomId);
+    if (!roomRouter) {
+      throw new Error('Room router not found');
+    }
+
+    const peer = this.peers.getOrCreate(input.roomId, input.peerId);
+    const transport = await this.transports.createWebRtcTransport(roomRouter.router, peer, {
+      peerId: input.peerId,
+      roomId: input.roomId,
+      ...input.appData,
+    });
+
+    return {
+      transportId: transport.id,
+      iceParameters: transport.iceParameters,
+      iceCandidates: transport.iceCandidates,
+      dtlsParameters: transport.dtlsParameters,
+    };
+  }
+
+  async connectTransport(roomId: RoomId, peerId: string, transportId: TransportId, input: TransportConnectInput): Promise<void> {
+    const peer = this.peers.get(roomId, peerId);
+    if (!peer) {
+      throw new Error('Peer not found');
+    }
+
+    const transport = peer.transports.get(transportId);
+    if (!transport) {
+      throw new Error('Transport not found');
+    }
+
+    await this.transports.connectTransport(transport, input);
+  }
+
+  async createProducer(input: CreateProducerInput): Promise<{ producerId: ProducerId }> {
+    const peer = this.peers.get(input.roomId, input.peerId);
+    if (!peer) {
+      throw new Error('Peer not found');
+    }
+
+    const producer = await this.producers.createProducer(peer, input);
+
+    logger.info({ roomId: input.roomId, peerId: input.peerId, producerId: producer.id, kind: producer.kind }, 'producer_created');
+
+    return { producerId: producer.id };
+  }
+
+  async createConsumer(input: CreateConsumerInput & { rtpCapabilities: RtpCapabilities }): Promise<{
+    consumerId: ConsumerId;
+    producerId: ProducerId;
+    kind: string;
+    rtpParameters: unknown;
+  }> {
+    const roomRouter = this.routers.get(input.roomId);
+    if (!roomRouter) {
+      throw new Error('Room not found');
+    }
+
+    const peer = this.peers.get(input.roomId, input.peerId);
+    if (!peer) {
+      throw new Error('Peer not found');
+    }
+
+    const producer = this.findProducer(input.roomId, input.producerId);
+    if (!producer) {
+      throw new Error('Producer not found');
+    }
+
+    const consumer = await this.consumers.createConsumer(roomRouter.router, peer, producer, input.rtpCapabilities, input);
+
+    await this.consumers.resume(consumer);
+
+    return {
+      consumerId: consumer.id,
+      producerId: producer.id,
+      kind: consumer.kind,
+      rtpParameters: consumer.rtpParameters,
+    };
+  }
+
+  disconnectPeer(roomId: RoomId, peerId: string): void {
+    const removed = this.peers.remove(roomId, peerId);
+    if (!removed) {
+      return;
+    }
+
+    logger.info({ roomId, peerId }, 'peer_disconnected');
+
+    if (this.peers.listRoomPeers(roomId).length === 0) {
+      this.closeRoom(roomId);
+    }
+  }
+
+  closeRoom(roomId: RoomId): void {
+    this.peers.removeRoom(roomId);
+    this.routers.closeRoom(roomId);
+    this.rooms.delete(roomId);
+    logger.info({ roomId }, 'room_closed');
+  }
+
+  close(): void {
+    for (const roomId of this.rooms.keys()) {
+      this.closeRoom(roomId);
+    }
+
+    this.routers.closeAll();
+  }
+
+  getStats(): { roomCount: number; peerCount: number; producerCount: number; consumerCount: number } {
+    let producerCount = 0;
+    let consumerCount = 0;
+
+    for (const room of this.rooms.keys()) {
+      for (const peer of this.peers.listRoomPeers(room)) {
+        producerCount += peer.producers.size;
+        consumerCount += peer.consumers.size;
+      }
+    }
+
+    return {
+      roomCount: this.rooms.size,
+      peerCount: this.peers.getCounts().peerCount,
+      producerCount,
+      consumerCount,
+    };
+  }
+
+  private async recoverRoomsForWorker(event: WorkerReplacedEvent): Promise<void> {
+    const affectedRooms: string[] = [];
+
+    for (const roomId of this.rooms.keys()) {
+      const workerId = this.workerManager.getAssignedWorkerId(roomId);
+      if (workerId === event.oldWorkerId) {
+        affectedRooms.push(roomId);
+      }
+    }
+
+    if (affectedRooms.length === 0) {
+      return;
+    }
+
+    logger.warn({ oldWorkerId: event.oldWorkerId, roomCount: affectedRooms.length }, 'worker_recovery_started');
+
+    for (const roomId of affectedRooms) {
+      try {
+        const worker = this.workerManager.assignWorkerForRoom(roomId);
+        await this.routers.migrateRoomToWorker(roomId, worker, event.newWorkerId);
+
+        for (const peer of this.peers.listRoomPeers(roomId)) {
+          peer.close();
+        }
+      } catch (error) {
+        logger.error({ err: error, roomId }, 'room_recovery_failed');
+      }
+    }
+  }
+
+  private findProducer(roomId: RoomId, producerId: ProducerId): Producer | undefined {
+    for (const peer of this.peers.listRoomPeers(roomId)) {
+      const producer = peer.producers.get(producerId);
+      if (producer) {
+        return producer;
+      }
+    }
+
+    return undefined;
+  }
+}
