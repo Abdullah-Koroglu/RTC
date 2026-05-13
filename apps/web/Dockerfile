@@ -19,6 +19,8 @@ RUN pnpm install --frozen-lockfile
 FROM base AS builder
 WORKDIR /repo
 COPY --from=deps /repo/ ./
+ARG CACHEBUST=1
+RUN echo "cache bust: $CACHEBUST"
 COPY . .
 ARG NEXT_PUBLIC_API_URL=https://api.local.rtc
 ARG NEXT_PUBLIC_SIGNALING_URL=wss://signal.local.rtc/ws

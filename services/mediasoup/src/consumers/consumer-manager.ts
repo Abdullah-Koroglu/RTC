@@ -61,7 +61,9 @@ export class ConsumerManager {
 
   private findConsumerTransport(peer: Peer): WebRtcTransport | undefined {
     for (const transport of peer.transports.values()) {
-      return transport;
+      if ((transport.appData as Record<string, unknown>).type === 'recv') {
+        return transport;
+      }
     }
     return undefined;
   }

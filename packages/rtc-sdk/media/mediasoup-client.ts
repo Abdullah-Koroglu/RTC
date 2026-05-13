@@ -61,16 +61,25 @@ export class MediasoupClient {
    * Initialize the device and load RTP capabilities from the server
    */
   async initialize(): Promise<void> {
-    this.mediasooupClient = await getMediasoupClient();
-    const Device = this.mediasooupClient.Device;
-    
-    this.device = new Device();
+    try {
+      this.mediasooupClient = await getMediasoupClient();
+      const Device = this.mediasooupClient.Device;
 
-    const joinResponse = await this.apiCall('POST', `/rooms/${this.options.roomId}/peers/${this.options.peerId}/join`, {});
-    
-    await this.device.load({
-      routerRtpCapabilities: joinResponse.routerRtpCapabilities,
-    });
+      this.device = new Device();
+
+      const joinResponse = await this.apiCall('POST', `/rooms/${this.options.roomId}/peers/${this.options.peerId}/join`, {});
+
+      await this.device.load({
+        routerRtpCapabilities: joinResponse.routerRtpCapabilities,
+      });
+    } catch (error) {
+      console.error('Mediasoup initialize failed', {
+        roomId: this.options.roomId,
+        peerId: this.options.peerId,
+        error,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -166,7 +175,19 @@ export class MediasoupClient {
       throw new Error('Transports not initialized');
     }
 
-    const stream = await this.createLocalMediaStream(constraints);
+    let stream: MediaStream;
+    try {
+      stream = await this.createLocalMediaStream(constraints);
+    } catch (error) {
+      console.error('Failed to create local media stream', {
+        roomId: this.options.roomId,
+        peerId: this.options.peerId,
+        constraints,
+        error,
+      });
+      throw error;
+    }
+
     this.localStream = { stream };
 
     // Produce audio
@@ -174,10 +195,20 @@ export class MediasoupClient {
       const audioTrack = stream.getAudioTracks()[0];
       if (this.localStream && audioTrack) this.localStream.audio = audioTrack;
 
-      const audioProducer = await this.sendTransport.produce({
-        track: audioTrack,
-        appData: { mediaTag: 'audio' },
-      });
+      let audioProducer: Producer;
+      try {
+        audioProducer = await this.sendTransport.produce({
+          track: audioTrack,
+          appData: { mediaTag: 'audio' },
+        });
+      } catch (error) {
+        console.error('Failed to produce audio track', {
+          roomId: this.options.roomId,
+          peerId: this.options.peerId,
+          error,
+        });
+        throw error;
+      }
 
       this.producers.set(audioProducer.id, audioProducer);
     }
@@ -187,10 +218,20 @@ export class MediasoupClient {
       const videoTrack = stream.getVideoTracks()[0];
       if (this.localStream && videoTrack) this.localStream.video = videoTrack;
 
-      const videoProducer = await this.sendTransport.produce({
-        track: videoTrack,
-        appData: { mediaTag: 'video' },
-      });
+      let videoProducer: Producer;
+      try {
+        videoProducer = await this.sendTransport.produce({
+          track: videoTrack,
+          appData: { mediaTag: 'video' },
+        });
+      } catch (error) {
+        console.error('Failed to produce video track', {
+          roomId: this.options.roomId,
+          peerId: this.options.peerId,
+          error,
+        });
+        throw error;
+      }
 
       this.producers.set(videoProducer.id, videoProducer);
     }
@@ -199,13 +240,22 @@ export class MediasoupClient {
   }
 
   async listRemoteProducers(): Promise<RemoteProducer[]> {
-    const response = (await this.apiCall(
-      'GET',
-      `/rooms/${this.options.roomId}/peers/${this.options.peerId}/producers`,
-      {},
-    )) as RemoteProducerListResponse;
+    try {
+      const response = (await this.apiCall(
+        'GET',
+        `/rooms/${this.options.roomId}/producers`,
+        {},
+      )) as RemoteProducerListResponse;
 
-    return response.producers;
+      return response.producers;
+    } catch (error) {
+      console.error('Failed to list remote producers', {
+        roomId: this.options.roomId,
+        peerId: this.options.peerId,
+        error,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -229,27 +279,40 @@ export class MediasoupClient {
       throw new Error('Device or recv transport not initialized');
     }
 
-    const rtpCapabilities = this.device.rtpCapabilities;
+    console.info('[MediasoupClient] subscribeMedia called', { producerId, remotePeerId: peerId, roomId: this.options.roomId, localPeerId: this.options.peerId });
 
-    const consumerResponse = await this.apiCall(
-      'POST',
-      `/rooms/${this.options.roomId}/peers/${this.options.peerId}/consumers`,
-      { producerId, rtpCapabilities, appData: { producerId, peerId } }
-    );
+    try {
+      const rtpCapabilities = this.device.rtpCapabilities;
 
-    const consumer = await this.recvTransport.consume({
-      id: consumerResponse.consumerId,
-      producerId: consumerResponse.producerId,
-      kind: consumerResponse.kind,
-      rtpParameters: consumerResponse.rtpParameters,
-    });
+      const consumerResponse = await this.apiCall(
+        'POST',
+        `/rooms/${this.options.roomId}/peers/${this.options.peerId}/consumers`,
+        { producerId, rtpCapabilities, appData: { producerId, peerId } }
+      );
 
-    this.consumers.set(consumer.id, consumer);
+      const consumer = await this.recvTransport.consume({
+        id: consumerResponse.consumerId,
+        producerId: consumerResponse.producerId,
+        kind: consumerResponse.kind,
+        rtpParameters: consumerResponse.rtpParameters,
+      });
 
-    const stream = new MediaStream();
-    stream.addTrack(consumer.track);
+      this.consumers.set(consumer.id, consumer);
 
-    return stream;
+      const stream = new MediaStream();
+      stream.addTrack(consumer.track);
+
+      return stream;
+    } catch (error) {
+      console.error('Failed to subscribe remote producer', {
+        roomId: this.options.roomId,
+        localPeerId: this.options.peerId,
+        remotePeerId: peerId,
+        producerId,
+        error,
+      });
+      throw error;
+    }
   }
 
   /**
@@ -405,6 +468,13 @@ export class MediasoupClient {
 
     if (!response.ok) {
       const text = await response.text();
+      console.error('Mediasoup API call failed', {
+        method,
+        endpoint,
+        status: response.status,
+        body,
+        response: text,
+      });
       throw new Error(`Mediasoup API error: ${response.status} - ${text}`);
     }
 

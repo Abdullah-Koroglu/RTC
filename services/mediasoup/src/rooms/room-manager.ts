@@ -134,6 +134,8 @@ export class RoomManager {
 
     await this.consumers.resume(consumer);
 
+    logger.info({ roomId: input.roomId, peerId: input.peerId, consumerId: consumer.id, producerId: producer.id, kind: consumer.kind }, 'consumer_created');
+
     return {
       consumerId: consumer.id,
       producerId: producer.id,
@@ -150,6 +152,23 @@ export class RoomManager {
         continue;
       }
 
+      for (const producer of peer.producers.values()) {
+        const kind = producer.kind === 'audio' ? 'audio' : 'video';
+        producers.push({
+          producerId: producer.id,
+          peerId: peer.id,
+          kind,
+        });
+      }
+    }
+
+    return producers;
+  }
+
+  listRoomProducers(roomId: RoomId): Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video' }> {
+    const producers: Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video' }> = [];
+
+    for (const peer of this.peers.listRoomPeers(roomId)) {
       for (const producer of peer.producers.values()) {
         const kind = producer.kind === 'audio' ? 'audio' : 'video';
         producers.push({

@@ -78,6 +78,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       await mediaClient.createTransports();
       mediaClientRef.current = mediaClient;
     } catch (err) {
+      console.error('Failed to initialize mediasoup in room hook', {
+        roomId,
+        peerId,
+        mediasoupUrl: env.NEXT_PUBLIC_MEDIASOUP_URL,
+        error: err,
+      });
       const error = err instanceof Error ? err : new Error('Failed to initialize mediasoup');
       setError(error);
       throw error;
@@ -97,6 +103,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       await signalingClient.joinRoom(roomId);
       setRoomState('joined');
     } catch (err) {
+      console.error('Failed to join room', {
+        roomId,
+        peerId,
+        isSignalingConnected,
+        error: err,
+      });
       const error = err instanceof Error ? err : new Error('Failed to join room');
       setError(error);
       setRoomState('error');
@@ -141,14 +153,37 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       return;
     }
 
-    const producers = await mediaClientRef.current.listRemoteProducers();
+    let producers;
+    try {
+      producers = await mediaClientRef.current.listRemoteProducers();
+      console.info('[useRoom] syncRemoteProducers result', { roomId, peerId, producers });
+    } catch (err) {
+      console.error('Remote producer discovery failed', {
+        roomId,
+        peerId,
+        error: err,
+      });
+      throw err;
+    }
 
     for (const producer of producers) {
       if (producer.peerId === peerId || subscribedProducerIdsRef.current.has(producer.producerId)) {
         continue;
       }
 
-      const stream = await mediaClientRef.current.subscribeMedia(producer.producerId, producer.peerId);
+      let stream: MediaStream;
+      try {
+        stream = await mediaClientRef.current.subscribeMedia(producer.producerId, producer.peerId);
+      } catch (err) {
+        console.error('Remote producer subscription failed', {
+          roomId,
+          peerId,
+          remotePeerId: producer.peerId,
+          producerId: producer.producerId,
+          error: err,
+        });
+        continue;
+      }
 
       setRemoteStreams((prev) => {
         const updated = new Map(prev);
@@ -181,6 +216,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         await syncRemoteProducers();
         return stream;
       } catch (err) {
+        console.error('Failed to publish local media', {
+          roomId,
+          peerId,
+          constraints,
+          error: err,
+        });
         const error = err instanceof Error ? err : new Error('Failed to publish media');
         setError(error);
         return null;
@@ -234,6 +275,13 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         if (remotePeerId !== peerId) {
           remoteProducersRef.current.set(remotePeerId, '');
           void syncRemoteProducers().catch((err) => {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            console.error('Failed to sync remote producers after participant joined', {
+              roomId,
+              peerId,
+              remotePeerId,
+              error: errorMessage,
+            });
             const error = err instanceof Error ? err : new Error('Failed to sync remote producers');
             setError(error);
           });
@@ -298,6 +346,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
     const runSync = () => {
       void syncRemoteProducers().catch((err) => {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error('Periodic remote producer sync failed', {
+          roomId,
+          peerId,
+          error: errorMessage,
+        });
         const error = err instanceof Error ? err : new Error('Failed to sync remote producers');
         setError(error);
       });
