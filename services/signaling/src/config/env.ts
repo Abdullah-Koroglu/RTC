@@ -11,7 +11,7 @@ const envSchema = z.object({
   REDIS_POOL_SIZE: z.coerce.number().int().positive().default(4),
   REDIS_RETRY_BASE_MS: z.coerce.number().int().positive().default(100),
   REDIS_RETRY_MAX_MS: z.coerce.number().int().positive().default(5000),
-  SIGNALING_JWT_SECRET: z.string().min(32).default('dev_signaling_secret_change_me_123456'),
+  JWT_SECRET: z.string().min(32).default('dev_jwt_secret_change_me_1234567890'),
   HEARTBEAT_INTERVAL_MS: z.coerce.number().int().positive().default(25000),
   HEARTBEAT_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(262144),

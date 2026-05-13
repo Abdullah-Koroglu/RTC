@@ -2,7 +2,7 @@ import { jwtVerify } from 'jose';
 import { env } from '@/config/env';
 import type { AuthContext } from '@/types/connection';
 
-const secret = new TextEncoder().encode(env.SIGNALING_JWT_SECRET);
+const secret = new TextEncoder().encode(env.JWT_SECRET);
 
 export async function authenticateToken(token: string): Promise<AuthContext> {
   const { payload } = await jwtVerify(token, secret, {
