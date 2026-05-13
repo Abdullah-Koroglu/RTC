@@ -5,14 +5,15 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getClientEnv } from '@/lib/env';
 import { useSignaling } from '@/hooks/useSignaling';
+import { generateUUID } from '@/lib/uuid';
 
 export const dynamic = 'force-dynamic';
 
 export default function HomePage() {
   const env = getClientEnv();
   const router = useRouter();
-  const [roomId, setRoomId] = useState(() => crypto.randomUUID());
-  const [peerId, setPeerId] = useState(() => `peer-${crypto.randomUUID().slice(0, 8)}`);
+  const [roomId, setRoomId] = useState(() => generateUUID());
+  const [peerId, setPeerId] = useState(() => `peer-${generateUUID().slice(0, 8)}`);
 
   const signaling = useSignaling({ participantId: peerId, autoConnect: true });
   const connectionStatus = useMemo(() => {
@@ -57,7 +58,7 @@ export default function HomePage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setRoomId(crypto.randomUUID())}
+                  onClick={() => setRoomId(generateUUID())}
                   className="rounded-md border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800"
                 >
                   Generate

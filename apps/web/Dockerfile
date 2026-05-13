@@ -20,6 +20,12 @@ FROM base AS builder
 WORKDIR /repo
 COPY --from=deps /repo/ ./
 COPY . .
+ARG NEXT_PUBLIC_API_URL=http://api.local.rtc
+ARG NEXT_PUBLIC_SIGNALING_URL=ws://signal.local.rtc/ws
+ARG NEXT_PUBLIC_MEDIASOUP_URL=http://mediasoup.local.rtc
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_SIGNALING_URL=${NEXT_PUBLIC_SIGNALING_URL}
+ENV NEXT_PUBLIC_MEDIASOUP_URL=${NEXT_PUBLIC_MEDIASOUP_URL}
 RUN pnpm --filter @repo/web build
 
 FROM node:20-alpine AS runner
