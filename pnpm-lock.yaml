@@ -242,6 +242,9 @@ importers:
 
   services/mediasoup:
     dependencies:
+      '@fastify/cors':
+        specifier: ^10.0.1
+        version: 10.1.0
       fastify:
         specifier: ^5.1.0
         version: 5.8.5

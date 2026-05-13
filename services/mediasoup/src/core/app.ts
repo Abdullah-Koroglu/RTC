@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import cors from '@fastify/cors';
 import { env } from '@/config/env';
 import { logger } from '@/core/logger';
 import { registerRoutes } from '@/routes';
@@ -10,7 +11,7 @@ export interface AppContext {
   roomManager: RoomManager;
 }
 
-export function buildApp(ctx: AppContext): FastifyInstance {
+export async function buildApp(ctx: AppContext): Promise<FastifyInstance> {
   const app = Fastify({
     loggerInstance: logger,
     disableRequestLogging: true,
@@ -18,7 +19,18 @@ export function buildApp(ctx: AppContext): FastifyInstance {
     bodyLimit: 2 * 1024 * 1024,
   });
 
-  app.get('/health', async () => ({
+  // Register CORS
+  await app.register(cors, {
+    origin: [
+      'http://app.local.rtc',
+      'http://localhost:3000',
+      process.env.CORS_ORIGIN ?? ''
+    ].filter(Boolean),
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
+  });
+
+    app.get('/health', () => ({
     status: 'ok',
     uptimeSeconds: Math.floor(process.uptime()),
     workers: ctx.workerManager.getSnapshots(),

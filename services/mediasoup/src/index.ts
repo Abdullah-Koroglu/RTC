@@ -9,7 +9,7 @@ async function bootstrap(): Promise<void> {
   await workerManager.bootstrap();
 
   const roomManager = new RoomManager(workerManager);
-  const app = buildApp({
+  const app = await buildApp({
     workerManager,
     roomManager,
   });
