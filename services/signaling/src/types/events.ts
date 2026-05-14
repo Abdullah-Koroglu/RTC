@@ -16,7 +16,7 @@ export const clientSignalSchema = z.object({
   type: z.literal('signal.relay'),
   roomId: z.string().min(1),
   payload: z.object({
-    kind: z.enum(['offer', 'answer', 'ice-candidate']),
+    kind: z.enum(['offer', 'answer', 'ice-candidate', 'chat']),
     data: z.unknown(),
     targetParticipantId: z.string().optional(),
   }),
@@ -75,7 +75,7 @@ export type OutboundEvent =
       roomId: string;
       participantId: string;
       payload: {
-        kind: 'offer' | 'answer' | 'ice-candidate';
+        kind: 'offer' | 'answer' | 'ice-candidate' | 'chat';
         data: unknown;
         targetParticipantId?: string;
       };
