@@ -15,12 +15,14 @@ export default function HomePage() {
   // Uncontrolled inputs — Playwright fill() writes directly to DOM
   // without conflicting with React state during hydration.
   const roomInputRef = useRef<HTMLInputElement>(null);
-  const peerInputRef = useRef<HTMLInputElement>(null);
-  const [initialRoomId] = useState(() => generateUUID());
-  const [initialPeerId] = useState(() => `peer-${generateUUID().slice(0, 8)}`);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // Needed only for the signaling status indicator.
-  const signaling = useSignaling({ participantId: initialPeerId, autoConnect: true });
+  // Technical peer identifier (UUID) — never shown to the user.
+  const [peerId] = useState(() => `usr-${generateUUID().slice(0, 8)}`);
+  // Stable room ID seed for initial value.
+  const [initialRoomId] = useState(() => generateUUID());
+
+  const signaling = useSignaling({ participantId: peerId, autoConnect: true });
   const statusColor = signaling.isConnecting
     ? 'bg-amber-400'
     : signaling.isConnected
@@ -35,9 +37,11 @@ export default function HomePage() {
   const onJoin = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const roomId = roomInputRef.current?.value.trim() ?? '';
-    const peerId = peerInputRef.current?.value.trim() ?? '';
-    if (!roomId || !peerId) return;
-    router.push(`/room/${encodeURIComponent(roomId)}?peerId=${encodeURIComponent(peerId)}`);
+    const displayName = nameInputRef.current?.value.trim() ?? '';
+    if (!roomId || !displayName) return;
+    router.push(
+      `/room/${encodeURIComponent(roomId)}?peerId=${encodeURIComponent(peerId)}&name=${encodeURIComponent(displayName)}`,
+    );
   };
 
   return (
@@ -50,7 +54,7 @@ export default function HomePage() {
           </div>
           <div>
             <h1 className="text-xl font-semibold tracking-tight text-slate-100">RTC Platform</h1>
-            <p className="text-xs text-slate-500">Start a video call in seconds</p>
+            <p className="text-xs text-slate-500">Saniyeler içinde görüntülü arama başlat</p>
           </div>
         </div>
 
@@ -59,7 +63,7 @@ export default function HomePage() {
           <form className="space-y-5" onSubmit={onJoin}>
             <div className="space-y-1.5">
               <label className="text-xs font-medium uppercase tracking-wider text-slate-400" htmlFor="room-id">
-                Room
+                Oda
               </label>
               <div className="flex gap-2">
                 <input
@@ -67,13 +71,13 @@ export default function HomePage() {
                   id="room-id"
                   defaultValue={initialRoomId}
                   className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600 transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                  placeholder="room-id"
+                  placeholder="oda-id"
                   spellCheck={false}
                 />
                 <button
                   type="button"
                   onClick={onGenerate}
-                  title="Generate new room ID"
+                  title="Yeni oda ID üret"
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-400 transition hover:border-slate-600 hover:bg-slate-800 hover:text-slate-200"
                 >
                   <RefreshCw size={14} />
@@ -83,14 +87,14 @@ export default function HomePage() {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium uppercase tracking-wider text-slate-400" htmlFor="peer-id">
-                Your name
+                Adınız
               </label>
               <input
-                ref={peerInputRef}
+                ref={nameInputRef}
                 id="peer-id"
-                defaultValue={initialPeerId}
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600 transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                placeholder="alice"
+                placeholder="örn. Abdullah"
+                autoComplete="nickname"
                 spellCheck={false}
               />
             </div>
@@ -99,7 +103,7 @@ export default function HomePage() {
               type="submit"
               className="w-full rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-500"
             >
-              Join Room
+              Odaya Katıl
             </button>
           </form>
         </div>

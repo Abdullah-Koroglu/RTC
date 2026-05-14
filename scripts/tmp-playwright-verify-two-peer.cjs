@@ -43,11 +43,17 @@ async function collectVideoMetrics(page) {
 }
 
 async function joinFromHome(page, roomId, peerId) {
-  await page.goto('http://localhost:3000', { waitUntil: 'networkidle', timeout: 120000 });
+  await page.goto('http://localhost:3009', { waitUntil: 'networkidle', timeout: 120000 });
   await page.fill('#room-id', roomId);
   await page.fill('#peer-id', peerId);
-  await page.getByRole('button', { name: 'Join Room' }).click();
+  await page.getByRole('button', { name: /Odaya Katıl|Join Room/ }).click();
   await page.waitForURL(new RegExp(`/room/${roomId}`), { timeout: 30000 });
+  // Dismiss device selection modal if it appears (wait up to 20s for room to join)
+  try {
+    await page.getByRole('button', { name: 'Katıl' }).click({ timeout: 20000 });
+  } catch {
+    // modal may not appear (already dismissed or feature flag disabled)
+  }
 }
 
 async function main() {

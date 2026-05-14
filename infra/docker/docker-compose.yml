@@ -22,6 +22,7 @@ services:
       MEDIASOUP_MAX_INCOMING_BITRATE: ${MEDIASOUP_MAX_INCOMING_BITRATE:-1500000}
       MEDIASOUP_LOG_TAGS: ${MEDIASOUP_LOG_TAGS:-ice,dtls,rtp,rtcp,bwe,score,simulcast,svc}
       MEDIASOUP_CODECS_JSON: ${MEDIASOUP_CODECS_JSON}
+      CORS_ORIGIN: http://localhost:3009
     ports:
       - '4020:4020'
       - '40000-40500:40000-40500/udp'

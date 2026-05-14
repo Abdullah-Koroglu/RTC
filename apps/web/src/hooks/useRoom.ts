@@ -18,6 +18,7 @@ export interface ChatMessage {
 export interface UseRoomOptions {
   roomId: string;
   peerId: string;
+  displayName?: string;
   autoJoin?: boolean;
 }
 
@@ -49,7 +50,7 @@ export interface UseRoomReturn {
  */
 export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const env = getClientEnv();
-  const { roomId, peerId, autoJoin = true } = options;
+  const { roomId, peerId, displayName, autoJoin = true } = options;
 
   const [roomState, setRoomState] = useState<RoomState>('idle');
   const [error, setError] = useState<Error | null>(null);
@@ -279,7 +280,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         { id: `self-${Date.now()}`, peerId, text: text.trim(), ts: Date.now(), isSelf: true },
       ]);
 
-      void signalingClient.sendChatMessage(roomId, text.trim(), peerId).catch((err) => {
+      void signalingClient.sendChatMessage(roomId, text.trim(), displayName ?? peerId).catch((err) => {
         console.error('Failed to send chat message', err);
       });
     },
