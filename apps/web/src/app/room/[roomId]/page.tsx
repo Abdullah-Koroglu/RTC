@@ -1,36 +1,50 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Check, Copy, MessageSquare, Mic, MicOff, Monitor, MonitorOff, PhoneOff, Users, Video, VideoOff } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { VideoTile } from '@/components/VideoTile';
 import { ChatPanel } from '@/components/ChatPanel';
 import { DeviceSelectModal } from '@/components/DeviceSelectModal';
+import { NameModal } from '@/components/NameModal';
 import { generateUUID } from '@/lib/uuid';
+
+const SS_DISPLAY_NAME = 'rtc:displayName';
+const SS_PEER_ID = 'rtc:peerId';
+
+function getPeerId(): string {
+  const stored = sessionStorage.getItem(SS_PEER_ID);
+  if (stored) return stored;
+  const id = `usr-${generateUUID().slice(0, 8)}`;
+  sessionStorage.setItem(SS_PEER_ID, id);
+  return id;
+}
 
 export default function RoomPage() {
   const router = useRouter();
   const params = useParams<{ roomId: string }>();
-  const searchParams = useSearchParams();
-
   const roomId = decodeURIComponent(params.roomId ?? '');
-  const peerIdFromQuery = searchParams.get('peerId')?.trim();
-  const nameFromQuery = searchParams.get('name')?.trim();
 
-  const [peerId] = useState(() => peerIdFromQuery ?? `usr-${generateUUID().slice(0, 8)}`);
-  // displayName falls back to peerId so legacy URLs (no ?name=) still work
-  const [displayName] = useState(() => nameFromQuery ?? peerId);
+  // Hydration-safe sessionStorage reads
+  const [peerId] = useState(() =>
+    typeof window !== 'undefined' ? getPeerId() : `usr-${generateUUID().slice(0, 8)}`,
+  );
+  const [displayName, setDisplayName] = useState(() =>
+    typeof window !== 'undefined' ? (sessionStorage.getItem(SS_DISPLAY_NAME) ?? '') : '',
+  );
 
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [hasPublished, setHasPublished] = useState(false);
-  const [deviceModalOpen, setDeviceModalOpen] = useState(false);
-  // Prevents the modal from reopening while publishMedia is still in-flight
   const [deviceModalShown, setDeviceModalShown] = useState(false);
+  const [deviceModalOpen, setDeviceModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // autoJoin only after we have a displayName
+  const readyToJoin = displayName !== '';
 
   const {
     roomState,
@@ -47,11 +61,9 @@ export default function RoomPage() {
     startScreenShare,
     stopScreenShare,
     sendChatMessage,
-  } = useRoom({ roomId, peerId, displayName, autoJoin: true });
+  } = useRoom({ roomId, peerId, displayName, autoJoin: readyToJoin });
 
-  // Open device modal once room is joined (before first publish).
-  // deviceModalShown prevents the modal from reopening while publishMedia
-  // is still in-flight (async gap between modal dismiss and hasPublished=true).
+  // Open device modal once room is joined
   useEffect(() => {
     if (roomState === 'joined' && !deviceModalShown) {
       setDeviceModalShown(true);
@@ -59,7 +71,7 @@ export default function RoomPage() {
     }
   }, [roomState, deviceModalShown]);
 
-  // Badge for unread messages
+  // Unread badge
   useEffect(() => {
     if (isChatOpen || chatMessages.length === 0) return;
     const last = chatMessages.at(-1);
@@ -67,6 +79,11 @@ export default function RoomPage() {
   }, [chatMessages, isChatOpen]);
 
   const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
+
+  const handleNameConfirm = (name: string) => {
+    sessionStorage.setItem(SS_DISPLAY_NAME, name);
+    setDisplayName(name);
+  };
 
   const handleDeviceConfirm = (videoDeviceId: string | undefined, audioDeviceId: string | undefined) => {
     setDeviceModalOpen(false);
@@ -122,6 +139,10 @@ export default function RoomPage() {
 
   return (
     <>
+      {/* Name modal — shown when sessionStorage has no displayName */}
+      {!readyToJoin && <NameModal onConfirm={handleNameConfirm} />}
+
+      {/* Device selection modal — shown once after room join */}
       {deviceModalOpen && <DeviceSelectModal onConfirm={handleDeviceConfirm} />}
 
       <main className="flex min-h-screen flex-col bg-slate-950 px-4 py-4 md:px-6">
@@ -134,16 +155,11 @@ export default function RoomPage() {
                 <h1 className="max-w-xs truncate text-base font-semibold text-slate-100 sm:max-w-sm md:max-w-lg" title={roomId}>
                   {roomId}
                 </h1>
-                <button
-                  type="button"
-                  onClick={onCopyRoomId}
-                  title="Oda ID'sini kopyala"
-                  className="shrink-0 text-slate-500 transition hover:text-slate-300"
-                >
+                <button type="button" onClick={onCopyRoomId} title="Oda ID'sini kopyala" className="shrink-0 text-slate-500 transition hover:text-slate-300">
                   {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
                 </button>
               </div>
-              <p className="mt-0.5 text-xs text-slate-500">{displayName}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{displayName || peerId}</p>
             </div>
             <div className="flex items-center gap-1.5 text-xs">
               <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
@@ -164,20 +180,11 @@ export default function RoomPage() {
             </div>
           )}
 
-          {/* Main: video grid + optional chat panel */}
+          {/* Main */}
           <div className={`flex flex-1 gap-3 ${isChatOpen ? 'flex-col md:flex-row' : ''}`}>
-
-            <section
-              className={`grid auto-rows-fr gap-3 ${
-                isChatOpen ? 'flex-1 grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
-              }`}
-            >
-              {localStream && (
-                <VideoTile stream={localStream} label={`${displayName} (Sen)`} muted mirrored />
-              )}
-              {screenStream && (
-                <VideoTile stream={screenStream} label={`${displayName} (Ekranın)`} muted />
-              )}
+            <section className={`grid auto-rows-fr gap-3 ${isChatOpen ? 'flex-1 grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'}`}>
+              {localStream && <VideoTile stream={localStream} label={`${displayName} (Sen)`} muted mirrored />}
+              {screenStream && <VideoTile stream={screenStream} label={`${displayName} (Ekranın)`} muted />}
               {remoteEntries.map(([key, stream]) => {
                 const isScreen = key.endsWith(':screen');
                 const label = isScreen ? `${key.replace(':screen', '')} (Ekran)` : key;
@@ -194,12 +201,7 @@ export default function RoomPage() {
 
             {isChatOpen && (
               <div className="h-[420px] w-full shrink-0 md:h-auto md:w-80 lg:w-96">
-                <ChatPanel
-                  messages={chatMessages}
-                  peerId={displayName}
-                  onSend={sendChatMessage}
-                  onClose={() => setIsChatOpen(false)}
-                />
+                <ChatPanel messages={chatMessages} peerId={displayName || peerId} onSend={sendChatMessage} onClose={() => setIsChatOpen(false)} />
               </div>
             )}
           </div>
@@ -207,46 +209,20 @@ export default function RoomPage() {
           {/* Controls */}
           <footer className="sticky bottom-4 flex justify-center">
             <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur">
-
-              <button
-                type="button"
-                onClick={onToggleAudio}
-                title={isAudioEnabled ? 'Mikrofonu kapat' : 'Mikrofonu aç'}
-                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
-                  isAudioEnabled ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'bg-rose-600 text-white hover:bg-rose-500'
-                }`}
-              >
+              <button type="button" onClick={onToggleAudio} title={isAudioEnabled ? 'Mikrofonu kapat' : 'Mikrofonu aç'}
+                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${isAudioEnabled ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'bg-rose-600 text-white hover:bg-rose-500'}`}>
                 {isAudioEnabled ? <Mic size={18} /> : <MicOff size={18} />}
               </button>
-
-              <button
-                type="button"
-                onClick={onToggleVideo}
-                title={isVideoEnabled ? 'Kamerayı kapat' : 'Kamerayı aç'}
-                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
-                  isVideoEnabled ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'bg-rose-600 text-white hover:bg-rose-500'
-                }`}
-              >
+              <button type="button" onClick={onToggleVideo} title={isVideoEnabled ? 'Kamerayı kapat' : 'Kamerayı aç'}
+                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${isVideoEnabled ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'bg-rose-600 text-white hover:bg-rose-500'}`}>
                 {isVideoEnabled ? <Video size={18} /> : <VideoOff size={18} />}
               </button>
-
-              <button
-                type="button"
-                onClick={onToggleScreen}
-                title={isScreenSharing ? 'Ekran paylaşımını durdur' : 'Ekranı paylaş'}
-                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
-                  isScreenSharing ? 'bg-cyan-600 text-white hover:bg-cyan-500' : 'border border-slate-700 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
+              <button type="button" onClick={onToggleScreen} title={isScreenSharing ? 'Ekran paylaşımını durdur' : 'Ekranı paylaş'}
+                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${isScreenSharing ? 'bg-cyan-600 text-white hover:bg-cyan-500' : 'border border-slate-700 text-slate-300 hover:bg-slate-800'}`}>
                 {isScreenSharing ? <MonitorOff size={18} /> : <Monitor size={18} />}
               </button>
-
-              <button
-                type="button"
-                onClick={handleOpenChat}
-                title="Sohbet"
-                className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 text-slate-300 transition hover:bg-slate-800"
-              >
+              <button type="button" onClick={handleOpenChat} title="Sohbet"
+                className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 text-slate-300 transition hover:bg-slate-800">
                 <MessageSquare size={18} />
                 {unreadCount > 0 && (
                   <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-bold text-white">
@@ -254,15 +230,9 @@ export default function RoomPage() {
                   </span>
                 )}
               </button>
-
               <div className="mx-1 h-6 w-px bg-slate-700" />
-
-              <button
-                type="button"
-                onClick={() => void onLeave()}
-                title="Görüşmeden ayrıl"
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-600 text-white transition hover:bg-rose-500"
-              >
+              <button type="button" onClick={() => void onLeave()} title="Görüşmeden ayrıl"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-600 text-white transition hover:bg-rose-500">
                 <PhoneOff size={18} />
               </button>
             </div>

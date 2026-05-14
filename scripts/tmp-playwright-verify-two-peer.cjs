@@ -42,13 +42,19 @@ async function collectVideoMetrics(page) {
   });
 }
 
-async function joinFromHome(page, roomId, peerId) {
+async function joinFromHome(page, roomId, displayName) {
+  // Pre-seed sessionStorage so NameModal doesn't block the room page
   await page.goto('http://localhost:3009', { waitUntil: 'networkidle', timeout: 120000 });
+  await page.evaluate(({ name }) => {
+    sessionStorage.setItem('rtc:displayName', name);
+  }, { name: displayName });
+
   await page.fill('#room-id', roomId);
-  await page.fill('#peer-id', peerId);
+  // #peer-id is the "Adınız" field — also set it to match sessionStorage
+  await page.fill('#peer-id', displayName);
   await page.getByRole('button', { name: /Odaya Katıl|Join Room/ }).click();
   await page.waitForURL(new RegExp(`/room/${roomId}`), { timeout: 30000 });
-  // Dismiss device selection modal if it appears (wait up to 20s for room to join)
+  // Dismiss device selection modal (wait up to 20s for room to join)
   try {
     await page.getByRole('button', { name: 'Katıl' }).click({ timeout: 20000 });
   } catch {

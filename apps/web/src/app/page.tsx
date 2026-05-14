@@ -1,7 +1,7 @@
 'use client';
 
 import type { FormEvent } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw, Video } from 'lucide-react';
 import { useSignaling } from '@/hooks/useSignaling';
@@ -9,18 +9,38 @@ import { generateUUID } from '@/lib/uuid';
 
 export const dynamic = 'force-dynamic';
 
+const SS_DISPLAY_NAME = 'rtc:displayName';
+const SS_PEER_ID = 'rtc:peerId';
+
+function getOrCreatePeerId(): string {
+  const stored = sessionStorage.getItem(SS_PEER_ID);
+  if (stored) return stored;
+  const id = `usr-${generateUUID().slice(0, 8)}`;
+  sessionStorage.setItem(SS_PEER_ID, id);
+  return id;
+}
+
 export default function HomePage() {
   const router = useRouter();
 
-  // Uncontrolled inputs — Playwright fill() writes directly to DOM
-  // without conflicting with React state during hydration.
   const roomInputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
-
-  // Technical peer identifier (UUID) — never shown to the user.
-  const [peerId] = useState(() => `usr-${generateUUID().slice(0, 8)}`);
-  // Stable room ID seed for initial value.
   const [initialRoomId] = useState(() => generateUUID());
+  const [savedName, setSavedName] = useState('');
+
+  // Pre-fill name from sessionStorage after mount (SSR-safe)
+  useEffect(() => {
+    const name = sessionStorage.getItem(SS_DISPLAY_NAME) ?? '';
+    setSavedName(name);
+    // Sync to uncontrolled input
+    if (nameInputRef.current && name) {
+      nameInputRef.current.value = name;
+    }
+  }, []);
+
+  const [peerId] = useState(() =>
+    typeof window !== 'undefined' ? getOrCreatePeerId() : `usr-${generateUUID().slice(0, 8)}`,
+  );
 
   const signaling = useSignaling({ participantId: peerId, autoConnect: true });
   const statusColor = signaling.isConnecting
@@ -39,9 +59,11 @@ export default function HomePage() {
     const roomId = roomInputRef.current?.value.trim() ?? '';
     const displayName = nameInputRef.current?.value.trim() ?? '';
     if (!roomId || !displayName) return;
-    router.push(
-      `/room/${encodeURIComponent(roomId)}?peerId=${encodeURIComponent(peerId)}&name=${encodeURIComponent(displayName)}`,
-    );
+
+    sessionStorage.setItem(SS_DISPLAY_NAME, displayName);
+    sessionStorage.setItem(SS_PEER_ID, peerId); // ensure peerId is persisted
+
+    router.push(`/room/${encodeURIComponent(roomId)}`);
   };
 
   return (
@@ -92,6 +114,7 @@ export default function HomePage() {
               <input
                 ref={nameInputRef}
                 id="peer-id"
+                defaultValue={savedName}
                 className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600 transition focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
                 placeholder="örn. Abdullah"
                 autoComplete="nickname"
