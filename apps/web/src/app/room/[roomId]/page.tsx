@@ -38,6 +38,11 @@ export default function RoomPage() {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [hasPublished, setHasPublished] = useState(false);
   const [deviceModalShown, setDeviceModalShown] = useState(false);
+  const [screenShareToast, setScreenShareToast] = useState('');
+
+  // Some browsers (iOS Safari) don't support getDisplayMedia at all
+  const canScreenShare =
+    typeof window !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function';
   const [deviceModalOpen, setDeviceModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -109,6 +114,11 @@ export default function RoomPage() {
   };
 
   const onToggleScreen = () => {
+    if (!canScreenShare) {
+      setScreenShareToast('Bu cihazda ekran paylaşımı desteklenmiyor');
+      setTimeout(() => setScreenShareToast(''), 3000);
+      return;
+    }
     if (isScreenSharing) stopScreenShare();
     else void startScreenShare();
   };
@@ -206,6 +216,13 @@ export default function RoomPage() {
             )}
           </div>
 
+          {/* Screen share toast */}
+          {screenShareToast && (
+            <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-200 shadow-xl">
+              {screenShareToast}
+            </div>
+          )}
+
           {/* Controls */}
           <footer className="sticky bottom-4 flex justify-center">
             <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur">
@@ -217,8 +234,18 @@ export default function RoomPage() {
                 className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${isVideoEnabled ? 'border border-slate-700 text-slate-300 hover:bg-slate-800' : 'bg-rose-600 text-white hover:bg-rose-500'}`}>
                 {isVideoEnabled ? <Video size={18} /> : <VideoOff size={18} />}
               </button>
-              <button type="button" onClick={onToggleScreen} title={isScreenSharing ? 'Ekran paylaşımını durdur' : 'Ekranı paylaş'}
-                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${isScreenSharing ? 'bg-cyan-600 text-white hover:bg-cyan-500' : 'border border-slate-700 text-slate-300 hover:bg-slate-800'}`}>
+              <button
+                type="button"
+                onClick={onToggleScreen}
+                title={!canScreenShare ? 'Ekran paylaşımı desteklenmiyor' : isScreenSharing ? 'Ekran paylaşımını durdur' : 'Ekranı paylaş'}
+                className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
+                  isScreenSharing
+                    ? 'bg-cyan-600 text-white hover:bg-cyan-500'
+                    : canScreenShare
+                      ? 'border border-slate-700 text-slate-300 hover:bg-slate-800'
+                      : 'border border-slate-800 text-slate-600 cursor-not-allowed'
+                }`}
+              >
                 {isScreenSharing ? <MonitorOff size={18} /> : <Monitor size={18} />}
               </button>
               <button type="button" onClick={handleOpenChat} title="Sohbet"

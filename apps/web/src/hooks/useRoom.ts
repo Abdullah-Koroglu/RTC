@@ -66,6 +66,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   // producerIds that have been subscribed — intentionally NOT cleared on participant-left
   // (prevents re-subscription to still-alive producers of a departed peer)
   const subscribedProducerIdsRef = useRef<Set<string>>(new Set());
+  // producerId → streamKey for screen producers (cleared when gone so re-share works)
+  const screenProducerKeysRef = useRef<Map<string, string>>(new Map());
   const initRef = useRef(false);
 
   const signalingOptions = {
@@ -143,6 +145,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
       producerOwnerRef.current.clear();
       subscribedProducerIdsRef.current.clear();
+      screenProducerKeysRef.current.clear();
       setChatMessages([]);
       setIsScreenSharing(false);
       setRoomState('idle');
@@ -161,6 +164,29 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     } catch (err) {
       console.error('Remote producer discovery failed', { roomId, peerId, error: err });
       throw err;
+    }
+
+    // --- Screen share cleanup ---
+    // For screen producers, unlike camera/mic, we DO want to clean up when the
+    // producer disappears (peer stopped sharing). Camera/mic producers stay in
+    // subscribedProducerIdsRef to prevent ghost re-subscription after disconnect;
+    // screen producers are removed so the peer can share again later.
+    const liveProducerIds = new Set(producers.map((p) => p.producerId));
+    for (const [screenProducerId, streamKey] of screenProducerKeysRef.current) {
+      if (!liveProducerIds.has(screenProducerId)) {
+        setRemoteStreams((prev) => {
+          const updated = new Map(prev);
+          const gone = updated.get(streamKey);
+          if (gone) {
+            gone.getTracks().forEach((t) => t.stop());
+            updated.delete(streamKey);
+          }
+          return updated;
+        });
+        subscribedProducerIdsRef.current.delete(screenProducerId);
+        producerOwnerRef.current.delete(screenProducerId);
+        screenProducerKeysRef.current.delete(screenProducerId);
+      }
     }
 
     for (const producer of producers) {
@@ -199,6 +225,11 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
       producerOwnerRef.current.set(producer.producerId, producer.peerId);
       subscribedProducerIdsRef.current.add(producer.producerId);
+
+      // Track screen producers separately so we can clean them up when they stop
+      if (isScreen) {
+        screenProducerKeysRef.current.set(producer.producerId, streamKey);
+      }
     }
   }, [peerId, roomState]);
 
