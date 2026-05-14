@@ -62,7 +62,7 @@ services:
       NEXT_PUBLIC_SIGNALING_URL: ws://localhost:4010/ws
       NEXT_PUBLIC_MEDIASOUP_URL: http://localhost:4020
     ports:
-      - '3000:3000'
+      - '3009:3000'
     depends_on:
       - api
       - signaling
@@ -75,7 +75,7 @@ services:
       - ../../services/api/.env.example
     environment:
       JWT_SECRET: dev_jwt_secret_change_me_1234567890
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: http://localhost:3009
       TURN_REALM: localhost
       TURN_SHARED_SECRET: rtc-local-turn-secret
     ports:
@@ -91,6 +91,7 @@ services:
       - ../../services/signaling/.env.example
     environment:
       JWT_SECRET: dev_jwt_secret_change_me_1234567890
+      ALLOWED_ORIGINS: http://localhost:3009
     ports:
       - '4010:4010'
     depends_on:

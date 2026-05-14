@@ -228,7 +228,7 @@ services:
     environment:
       NODE_ENV: production
     ports:
-      - '127.0.0.1:3000:3000'
+      - '127.0.0.1:3009:3000'
     depends_on:
       api:
         condition: service_started
