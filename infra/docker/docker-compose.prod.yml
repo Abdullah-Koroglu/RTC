@@ -15,7 +15,7 @@ services:
     build:
       context: ../../
       dockerfile: services/mediasoup/Dockerfile
-    image: rtc-mediasoup:prod
+    image: ${GHCR_PREFIX}/rtc-mediasoup:latest
     container_name: rtc-mediasoup-prod
     restart: always
     read_only: true
@@ -65,7 +65,7 @@ services:
     build:
       context: ../../
       dockerfile: infra/coturn/Dockerfile
-    image: rtc-coturn:prod
+    image: ${GHCR_PREFIX}/rtc-coturn:latest
     container_name: rtc-coturn-prod
     restart: always
     read_only: true
@@ -144,7 +144,7 @@ services:
     build:
       context: ../../
       dockerfile: services/api/Dockerfile
-    image: rtc-api:prod
+    image: ${GHCR_PREFIX}/rtc-api:latest
     container_name: rtc-api-prod
     restart: always
     read_only: true
@@ -178,7 +178,7 @@ services:
     build:
       context: ../../
       dockerfile: services/signaling/Dockerfile
-    image: rtc-signaling:prod
+    image: ${GHCR_PREFIX}/rtc-signaling:latest
     container_name: rtc-signaling-prod
     restart: always
     read_only: true
@@ -215,7 +215,7 @@ services:
         NEXT_PUBLIC_API_URL: https://api.link.akoroglu.com.tr
         NEXT_PUBLIC_SIGNALING_URL: wss://signal.link.akoroglu.com.tr/ws
         NEXT_PUBLIC_MEDIASOUP_URL: https://media.link.akoroglu.com.tr
-    image: rtc-web:prod
+    image: ${GHCR_PREFIX}/rtc-web:latest
     container_name: rtc-web-prod
     restart: always
     read_only: true
