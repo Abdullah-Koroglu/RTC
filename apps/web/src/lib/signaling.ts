@@ -1,13 +1,21 @@
 import { SignalingClient } from '@repo/rtc-sdk';
+import { getSession } from 'next-auth/react';
 
 let instance: SignalingClient | null = null;
 
 async function fetchSignalingToken(participantId: string): Promise<string> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+  // If the user is authenticated, include their display name for richer JWT claims
+  const session = await getSession();
+  const body = session?.user
+    ? { subject: session.user.id ?? participantId, role: 'user' }
+    : { subject: participantId };
+
   const response = await fetch(`${apiUrl}/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subject: participantId }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

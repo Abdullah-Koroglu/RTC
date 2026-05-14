@@ -216,6 +216,7 @@ services:
         NEXT_PUBLIC_API_URL: https://api.link.akoroglu.com.tr
         NEXT_PUBLIC_SIGNALING_URL: wss://signal.link.akoroglu.com.tr/ws
         NEXT_PUBLIC_MEDIASOUP_URL: https://media.link.akoroglu.com.tr
+        NEXTAUTH_URL: https://link.akoroglu.com.tr
     image: ${GHCR_PREFIX}/rtc-web:latest
     container_name: rtc-web-prod
     restart: always
@@ -228,6 +229,12 @@ services:
       - ALL
     environment:
       NODE_ENV: production
+      NEXTAUTH_URL: https://link.akoroglu.com.tr
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
     ports:
       - '127.0.0.1:3009:3000'
     depends_on:

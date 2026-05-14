@@ -1,17 +1,21 @@
 import config from '../../packages/eslint-config/base.js';
+import globals from 'globals';
 
 export default [
-  // Ignore config files that are outside the tsconfig include
   {
     ignores: ['tailwind.config.ts', 'postcss.config.mjs'],
   },
   ...config,
-  // Next.js App Router files need a local build to produce .next/types before
-  // TypeScript can fully resolve next/* subpath imports. Disabling unsafe-*
-  // rules avoids false positives when .next/types is absent (CI always has it).
   {
     files: ['src/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+      },
+    },
     rules: {
+      // Next.js App Router files need a local build to produce .next/types before
+      // TypeScript can fully resolve next/* subpath imports.
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',

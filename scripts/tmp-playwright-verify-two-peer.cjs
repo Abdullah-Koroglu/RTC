@@ -49,11 +49,20 @@ async function joinFromHome(page, roomId, displayName) {
     sessionStorage.setItem('rtc:displayName', name);
   }, { name: displayName });
 
-  await page.fill('#room-id', roomId);
-  // #peer-id is the "Adınız" field — also set it to match sessionStorage
+  // Fill name (always visible)
   await page.fill('#peer-id', displayName);
-  await page.getByRole('button', { name: /Odaya Katıl|Join Room/ }).click();
+
+  // Reveal the room-code input by clicking "Kodla Katıl" or "Join with code"
+  await page.getByRole('button', { name: /Kodla Katıl|Join with code/ }).click();
+
+  // Fill room code (revealed after button click)
+  await page.fill('#room-id', roomId);
+
+  // Submit the inline join form
+  await page.getByRole('button', { name: /^Katıl$/ }).click();
+
   await page.waitForURL(new RegExp(`/room/${roomId}`), { timeout: 30000 });
+
   // Dismiss device selection modal (wait up to 20s for room to join)
   try {
     await page.getByRole('button', { name: 'Katıl' }).click({ timeout: 20000 });
