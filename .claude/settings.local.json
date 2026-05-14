@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(docker exec docker-web-1 ls /app/apps/web/.next/static/ 2>&1)"
+    ]
+  }
+}

@@ -63,6 +63,36 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
   const { client: signalingClient, isConnected: isSignalingConnected } = useSignaling(signalingOptions);
 
+  const removeRemotePeer = useCallback((remotePeerId: string) => {
+    const stream = remoteStreamsRef.current.get(remotePeerId);
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      remoteStreamsRef.current.delete(remotePeerId);
+      setRemoteStreams(new Map(remoteStreamsRef.current));
+    }
+
+    remoteProducersRef.current.delete(remotePeerId);
+    const consumersToRemove: string[] = [];
+    remoteConsumersRef.current.forEach((pid, consumerId) => {
+      if (pid === remotePeerId) {
+        consumersToRemove.push(consumerId);
+      }
+    });
+    consumersToRemove.forEach((cid) => remoteConsumersRef.current.delete(cid));
+
+    const producerIdsToDelete: string[] = [];
+    producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
+      if (ownerPeerId === remotePeerId) {
+        producerIdsToDelete.push(producerId);
+      }
+    });
+
+    producerIdsToDelete.forEach((producerId) => {
+      producerOwnerRef.current.delete(producerId);
+      subscribedProducerIdsRef.current.delete(producerId);
+    });
+  }, []);
+
   const initializeMediasoup = useCallback(async () => {
     if (mediaClientRef.current) {
       return;
@@ -198,6 +228,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         if (!target.getTracks().some((existingTrack) => existingTrack.id === track.id)) {
           target.addTrack(track);
         }
+
+        track.onended = () => {
+          removeRemotePeer(producer.peerId);
+        };
       }
 
       remoteStreamsRef.current.set(producer.peerId, target);
@@ -296,33 +330,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('room.participant-left', ({ participantId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
-          const stream = remoteStreamsRef.current.get(remotePeerId);
-          if (stream) {
-            stream.getTracks().forEach((track) => track.stop());
-            remoteStreamsRef.current.delete(remotePeerId);
-            setRemoteStreams(new Map(remoteStreamsRef.current));
-          }
-
-          remoteProducersRef.current.delete(remotePeerId);
-          const consumersToRemove: string[] = [];
-          remoteConsumersRef.current.forEach((pid, consumerId) => {
-            if (pid === remotePeerId) {
-              consumersToRemove.push(consumerId);
-            }
-          });
-          consumersToRemove.forEach((cid) => remoteConsumersRef.current.delete(cid));
-
-          const producerIdsToDelete: string[] = [];
-          producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
-            if (ownerPeerId === remotePeerId) {
-              producerIdsToDelete.push(producerId);
-            }
-          });
-
-          producerIdsToDelete.forEach((producerId) => {
-            producerOwnerRef.current.delete(producerId);
-            subscribedProducerIdsRef.current.delete(producerId);
-          });
+          removeRemotePeer(remotePeerId);
         }
       }),
     );
@@ -338,7 +346,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     return () => {
       listeners.forEach((unsub) => unsub());
     };
-  }, [signalingClient, roomState, peerId]);
+  }, [removeRemotePeer, signalingClient, roomState, peerId]);
 
   useEffect(() => {
     if (roomState !== 'joined') {

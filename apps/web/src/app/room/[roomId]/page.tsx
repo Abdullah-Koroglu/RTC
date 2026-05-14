@@ -33,6 +33,7 @@ export default function RoomPage() {
   }, [roomState, hasPublished, publishMedia]);
 
   const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
+  const participantCount = remoteEntries.length + (localStream ? 1 : 0);
 
   const onToggleAudio = () => {
     const next = !isAudioEnabled;
@@ -61,14 +62,14 @@ export default function RoomPage() {
     roomState === 'joined' ? 'text-emerald-400' : roomState === 'error' ? 'text-rose-400' : 'text-amber-400';
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-950 px-4 py-4 md:px-6">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.12),_transparent_28%),linear-gradient(180deg,_#020617_0%,_#020617_45%,_#0f172a_100%)] px-3 py-3 sm:px-4 sm:py-4 md:px-6">
+      <div className="mx-auto flex min-h-[calc(100dvh-1.5rem)] w-full max-w-7xl flex-col gap-4 sm:min-h-[calc(100dvh-2rem)]">
 
         {/* Header */}
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-3 backdrop-blur">
-          <div className="min-w-0">
+        <header className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-4 shadow-2xl shadow-slate-950/30 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3">
+          <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-base font-semibold text-slate-100" title={roomId}>
+              <h1 className="truncate text-sm font-semibold text-slate-100 sm:text-base" title={roomId}>
                 {roomId}
               </h1>
               <button
@@ -80,11 +81,16 @@ export default function RoomPage() {
                 {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
               </button>
             </div>
-            <p className="mt-0.5 text-xs text-slate-500">{peerId}</p>
+            <p className="text-xs text-slate-500">{peerId}</p>
           </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className={`h-1.5 w-1.5 rounded-full ${roomState === 'joined' ? 'bg-emerald-400' : roomState === 'error' ? 'bg-rose-400' : 'bg-amber-400'}`} />
-            <span className={statusColor}>{roomState}</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs sm:justify-end">
+            <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-slate-300">
+              {participantCount} participant{participantCount === 1 ? '' : 's'}
+            </span>
+            <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 capitalize text-slate-300">
+              <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${roomState === 'joined' ? 'bg-emerald-400' : roomState === 'error' ? 'bg-rose-400' : 'bg-amber-400'}`} />
+              {roomState}
+            </span>
           </div>
         </header>
 
@@ -102,7 +108,7 @@ export default function RoomPage() {
         )}
 
         {/* Video grid */}
-        <section className="grid flex-1 auto-rows-fr gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <section className="grid flex-1 auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {localStream && <VideoTile stream={localStream} label={`${peerId} (You)`} muted mirrored />}
 
           {remoteEntries.map(([remotePeerId, stream]) => (
@@ -110,17 +116,17 @@ export default function RoomPage() {
           ))}
 
           {roomState === 'joined' && remoteEntries.length === 0 && (
-            <div className="flex aspect-video flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-8 text-center">
+            <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-6 text-center sm:min-h-[280px] sm:p-8">
               <Users size={32} className="mb-3 text-slate-600" />
-              <p className="text-sm font-medium text-slate-400">Waiting for participants…</p>
-              <p className="mt-1 text-xs text-slate-600">Share the room ID to invite others</p>
+              <p className="text-sm font-medium text-slate-300">Waiting for participants…</p>
+              <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">Share the room ID to invite others. New participants will appear here automatically.</p>
             </div>
           )}
         </section>
 
         {/* Controls */}
-        <footer className="sticky bottom-4 flex justify-center">
-          <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur">
+        <footer className="sticky bottom-3 flex justify-center pb-[env(safe-area-inset-bottom)]">
+          <div className="flex w-full flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/90 px-3 py-3 shadow-xl backdrop-blur sm:w-auto sm:px-4">
             {/* Audio toggle */}
             <button
               type="button"
@@ -149,7 +155,7 @@ export default function RoomPage() {
               {isVideoEnabled ? <Video size={18} /> : <VideoOff size={18} />}
             </button>
 
-            <div className="mx-1 h-6 w-px bg-slate-700" />
+            <div className="mx-1 hidden h-6 w-px bg-slate-700 sm:block" />
 
             {/* Leave */}
             <button

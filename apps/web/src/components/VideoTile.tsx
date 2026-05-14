@@ -13,7 +13,9 @@ export function VideoTile({ stream, label, muted = false, mirrored = false }: Vi
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (!videoRef.current || !stream) return;
+    if (!videoRef.current || !stream) {
+      return;
+    }
 
     const video = videoRef.current;
     video.srcObject = stream;
@@ -37,18 +39,18 @@ export function VideoTile({ stream, label, muted = false, mirrored = false }: Vi
   }, [stream, muted]);
 
   return (
-    <article className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+    <article className="relative min-h-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-slate-950/20">
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={muted}
-        className="aspect-video w-full bg-slate-950 block"
+        className="block aspect-video w-full bg-slate-950"
         style={{ objectFit: 'cover', transform: mirrored ? 'scaleX(-1)' : undefined }}
       />
       {/* Gradient overlay + label */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pb-2.5 pt-6">
-        <span className="text-xs font-medium text-white/90">{label}</span>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent px-3 pb-2.5 pt-8">
+        <span className="line-clamp-1 text-xs font-medium text-white/90">{label}</span>
       </div>
     </article>
   );
