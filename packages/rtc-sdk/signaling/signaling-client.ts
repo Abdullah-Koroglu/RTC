@@ -1,5 +1,7 @@
 import { TypedEventEmitter } from '../events/event-emitter';
 
+export type SignalKind = 'offer' | 'answer' | 'ice-candidate' | 'chat';
+
 // Inbound event types from signaling server
 export type InboundSignalingEvent =
   | { type: 'ack'; requestId?: string; ok: true; data?: unknown }
@@ -22,7 +24,7 @@ export type InboundSignalingEvent =
       roomId: string;
       participantId: string;
       payload: {
-        kind: 'offer' | 'answer' | 'ice-candidate';
+        kind: SignalKind;
         data: unknown;
         targetParticipantId?: string;
       };
@@ -43,7 +45,7 @@ export type OutboundSignalingEvent =
       type: 'signal.relay';
       roomId: string;
       payload: {
-        kind: 'offer' | 'answer' | 'ice-candidate';
+        kind: SignalKind;
         data: unknown;
         targetParticipantId?: string;
       };
@@ -51,6 +53,12 @@ export type OutboundSignalingEvent =
     }
   | { type: 'session.reconnect'; recoveryToken: string; requestId?: string }
   | { type: 'ping'; ts?: number };
+
+export interface ChatMessagePayload {
+  text: string;
+  senderName: string;
+  ts: number;
+}
 
 export interface SignalingClientEventMap {
     [key: string]: unknown;
@@ -66,6 +74,7 @@ export interface SignalingClientEventMap {
     kind: 'offer' | 'answer' | 'ice-candidate';
     data: unknown;
   };
+  'chat.received': { roomId: string; participantId: string } & ChatMessagePayload;
   'reconnect.scheduled': { delayMs: number; attempt: number };
   'reconnect.succeeded': { attempt: number };
   'reconnect.failed': { attempt: number; error: Error };
@@ -268,6 +277,25 @@ export class SignalingClient {
     });
   }
 
+  async sendChatMessage(roomId: string, text: string, senderName: string): Promise<void> {
+    const requestId = this.generateRequestId();
+    const payload: ChatMessagePayload = { text, senderName, ts: Date.now() };
+    const message: OutboundSignalingEvent = {
+      type: 'signal.relay',
+      roomId,
+      payload: { kind: 'chat', data: payload },
+      requestId,
+    };
+    await this.sendMessage(message);
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error('Chat message relay timed out'));
+      }, 5000);
+      this.pendingRequests.set(requestId, { resolve: () => resolve(), reject, timeout });
+    });
+  }
+
   async ping(): Promise<number> {
     const ts = Date.now();
     const message: OutboundSignalingEvent = {
@@ -347,12 +375,23 @@ export class SignalingClient {
           reason: message.reason,
         });
       } else if (message.type === 'signal.relay') {
-        this.emitter.emit('signal.received', {
-          roomId: message.roomId,
-          participantId: message.participantId,
-          kind: message.payload.kind,
-          data: message.payload.data,
-        });
+        if (message.payload.kind === 'chat') {
+          const payload = message.payload.data as ChatMessagePayload;
+          this.emitter.emit('chat.received', {
+            roomId: message.roomId,
+            participantId: message.participantId,
+            text: payload.text,
+            senderName: payload.senderName,
+            ts: payload.ts,
+          });
+        } else {
+          this.emitter.emit('signal.received', {
+            roomId: message.roomId,
+            participantId: message.participantId,
+            kind: message.payload.kind as 'offer' | 'answer' | 'ice-candidate',
+            data: message.payload.data,
+          });
+        }
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error('Failed to parse signaling message');

@@ -7,6 +7,14 @@ import { getClientEnv } from '@/lib/env';
 
 export type RoomState = 'idle' | 'joining' | 'joined' | 'error';
 
+export interface ChatMessage {
+  id: string;
+  peerId: string;
+  text: string;
+  ts: number;
+  isSelf: boolean;
+}
+
 export interface UseRoomOptions {
   roomId: string;
   peerId: string;
@@ -18,21 +26,26 @@ export interface UseRoomReturn {
   error: Error | null;
   localStream: MediaStream | null;
   remoteStreams: Map<string, MediaStream>;
+  chatMessages: ChatMessage[];
+  screenStream: MediaStream | null;
+  isScreenSharing: boolean;
   joinRoom: () => Promise<void>;
   leaveRoom: () => Promise<void>;
   publishMedia: (constraints?: MediaStreamConstraints) => Promise<MediaStream | null>;
   unpublishMedia: (kind: 'audio' | 'video') => void;
   setAudioEnabled: (enabled: boolean) => void;
   setVideoEnabled: (enabled: boolean) => void;
+  startScreenShare: () => Promise<MediaStream | null>;
+  stopScreenShare: () => void;
+  sendChatMessage: (text: string) => void;
 }
 
 /**
- * Hook to manage a WebRTC room with mediasoup transport and signaling
- * 
- * Coordinates:
- * - SignalingClient for peer discovery and ICE candidates
- * - MediasoupClient for producing/consuming media streams
- * - Local and remote media stream management
+ * Hook to manage a WebRTC room with mediasoup transport and signaling.
+ *
+ * Remote stream keys:
+ *   "{peerId}"        → camera/mic stream
+ *   "{peerId}:screen" → screen share stream
  */
 export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const env = getClientEnv();
@@ -42,12 +55,15 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [error, setError] = useState<Error | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const mediaClientRef = useRef<MediasoupClient | null>(null);
-  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
-  const remoteProducersRef = useRef<Map<string, string>>(new Map());
-  const remoteConsumersRef = useRef<Map<string, string>>(new Map());
+  // producerId → peerId
   const producerOwnerRef = useRef<Map<string, string>>(new Map());
+  // producerIds that have been subscribed — intentionally NOT cleared on participant-left
+  // (prevents re-subscription to still-alive producers of a departed peer)
   const subscribedProducerIdsRef = useRef<Set<string>>(new Set());
   const initRef = useRef(false);
 
@@ -63,64 +79,20 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
   const { client: signalingClient, isConnected: isSignalingConnected } = useSignaling(signalingOptions);
 
-  const removeRemotePeer = useCallback((remotePeerId: string) => {
-    const stream = remoteStreamsRef.current.get(remotePeerId);
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      remoteStreamsRef.current.delete(remotePeerId);
-      setRemoteStreams(new Map(remoteStreamsRef.current));
-    }
-
-    remoteProducersRef.current.delete(remotePeerId);
-    const consumersToRemove: string[] = [];
-    remoteConsumersRef.current.forEach((pid, consumerId) => {
-      if (pid === remotePeerId) {
-        consumersToRemove.push(consumerId);
-      }
-    });
-    consumersToRemove.forEach((cid) => remoteConsumersRef.current.delete(cid));
-
-    const producerIdsToDelete: string[] = [];
-    producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
-      if (ownerPeerId === remotePeerId) {
-        producerIdsToDelete.push(producerId);
-      }
-    });
-
-    producerIdsToDelete.forEach((producerId) => {
-      producerOwnerRef.current.delete(producerId);
-      subscribedProducerIdsRef.current.delete(producerId);
-    });
-  }, []);
-
   const initializeMediasoup = useCallback(async () => {
-    if (mediaClientRef.current) {
-      return;
-    }
+    if (mediaClientRef.current) return;
 
-    try {
-      const mediaClient = new MediasoupClient({
-        baseUrl: env.NEXT_PUBLIC_MEDIASOUP_URL,
-        apiBaseUrl: env.NEXT_PUBLIC_API_URL,
-        roomId,
-        peerId,
-      });
+    const mediaClient = new MediasoupClient({
+      baseUrl: env.NEXT_PUBLIC_MEDIASOUP_URL,
+      apiBaseUrl: env.NEXT_PUBLIC_API_URL,
+      roomId,
+      peerId,
+    });
 
-      await mediaClient.initialize();
-      await mediaClient.createTransports();
-      mediaClientRef.current = mediaClient;
-    } catch (err) {
-      console.error('Failed to initialize mediasoup in room hook', {
-        roomId,
-        peerId,
-        mediasoupUrl: env.NEXT_PUBLIC_MEDIASOUP_URL,
-        error: err,
-      });
-      const error = err instanceof Error ? err : new Error('Failed to initialize mediasoup');
-      setError(error);
-      throw error;
-    }
-  }, [roomId, peerId, env.NEXT_PUBLIC_API_URL, env.NEXT_PUBLIC_MEDIASOUP_URL]);
+    await mediaClient.initialize();
+    await mediaClient.createTransports();
+    mediaClientRef.current = mediaClient;
+  }, [roomId, peerId, env.NEXT_PUBLIC_MEDIASOUP_URL]);
 
   const joinRoom = useCallback(async () => {
     try {
@@ -135,16 +107,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       await signalingClient.joinRoom(roomId);
       setRoomState('joined');
     } catch (err) {
-      console.error('Failed to join room', {
-        roomId,
-        peerId,
-        isSignalingConnected,
-        error: err,
-      });
-      const error = err instanceof Error ? err : new Error('Failed to join room');
-      setError(error);
+      const joinError = err instanceof Error ? err : new Error('Failed to join room');
+      setError(joinError);
       setRoomState('error');
-      throw error;
+      throw joinError;
     }
   }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId]);
 
@@ -154,10 +120,9 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         await signalingClient.leaveRoom(roomId);
       }
 
-      remoteStreamsRef.current.forEach((stream) => {
+      remoteStreams.forEach((stream) => {
         stream.getTracks().forEach((track) => track.stop());
       });
-      remoteStreamsRef.current.clear();
       setRemoteStreams(new Map());
 
       if (mediaClientRef.current) {
@@ -170,32 +135,30 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         setLocalStream(null);
       }
 
-      remoteProducersRef.current.clear();
-      remoteConsumersRef.current.clear();
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop());
+        setScreenStream(null);
+      }
+
       producerOwnerRef.current.clear();
       subscribedProducerIdsRef.current.clear();
+      setChatMessages([]);
+      setIsScreenSharing(false);
       setRoomState('idle');
     } catch (err) {
       console.error('Error leaving room:', err);
       setRoomState('idle');
     }
-  }, [localStream, signalingClient, roomId]);
+  }, [remoteStreams, localStream, screenStream, signalingClient, roomId]);
 
   const syncRemoteProducers = useCallback(async () => {
-    if (!mediaClientRef.current || roomState !== 'joined') {
-      return;
-    }
+    if (!mediaClientRef.current || roomState !== 'joined') return;
 
     let producers;
     try {
       producers = await mediaClientRef.current.listRemoteProducers();
-      console.info('[useRoom] syncRemoteProducers result', { roomId, peerId, producers });
     } catch (err) {
-      console.error('Remote producer discovery failed', {
-        roomId,
-        peerId,
-        error: err,
-      });
+      console.error('Remote producer discovery failed', { roomId, peerId, error: err });
       throw err;
     }
 
@@ -204,14 +167,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         continue;
       }
 
-      subscribedProducerIdsRef.current.add(producer.producerId);
-
       let stream: MediaStream;
       try {
         stream = await mediaClientRef.current.subscribeMedia(producer.producerId, producer.peerId);
-        console.info('[useRoom] subscribeMedia returned', { peerId: producer.peerId, tracks: stream.getTracks().map(t => t.kind) });
       } catch (err) {
-        subscribedProducerIdsRef.current.delete(producer.producerId);
         console.error('Remote producer subscription failed', {
           roomId,
           peerId,
@@ -222,46 +181,37 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         continue;
       }
 
-      const target = remoteStreamsRef.current.get(producer.peerId) ?? new MediaStream();
+      const isScreen = producer.appData?.mediaTag === 'screen';
+      const streamKey = isScreen ? `${producer.peerId}:screen` : producer.peerId;
 
-      for (const track of stream.getTracks()) {
-        if (!target.getTracks().some((existingTrack) => existingTrack.id === track.id)) {
-          target.addTrack(track);
+      setRemoteStreams((prev) => {
+        const updated = new Map(prev);
+        const target = updated.get(streamKey) ?? new MediaStream();
+        for (const track of stream.getTracks()) {
+          if (!target.getTracks().some((existingTrack) => existingTrack.id === track.id)) {
+            target.addTrack(track);
+          }
         }
-
-        track.onended = () => {
-          removeRemotePeer(producer.peerId);
-        };
-      }
-
-      remoteStreamsRef.current.set(producer.peerId, target);
-      setRemoteStreams(new Map(remoteStreamsRef.current));
-      console.info('[useRoom] setRemoteStreams updated', { peerId: producer.peerId, trackCount: target.getTracks().length, mapSize: remoteStreamsRef.current.size });
+        updated.set(streamKey, target);
+        return updated;
+      });
 
       producerOwnerRef.current.set(producer.producerId, producer.peerId);
+      subscribedProducerIdsRef.current.add(producer.producerId);
     }
   }, [peerId, roomState]);
 
   const publishMedia = useCallback(
     async (constraints: MediaStreamConstraints = { audio: true, video: true }): Promise<MediaStream | null> => {
       try {
-        if (!mediaClientRef.current) {
-          throw new Error('Mediasoup client not initialized');
-        }
-
+        if (!mediaClientRef.current) throw new Error('Mediasoup client not initialized');
         const stream = await mediaClientRef.current.publishMedia(constraints);
         setLocalStream(stream);
         await syncRemoteProducers();
         return stream;
       } catch (err) {
-        console.error('Failed to publish local media', {
-          roomId,
-          peerId,
-          constraints,
-          error: err,
-        });
-        const error = err instanceof Error ? err : new Error('Failed to publish media');
-        setError(error);
+        console.error('Failed to publish local media', { roomId, peerId, error: err });
+        setError(err instanceof Error ? err : new Error('Failed to publish media'));
         return null;
       }
     },
@@ -270,58 +220,83 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
   const unpublishMedia = useCallback((kind: 'audio' | 'video') => {
     try {
-      if (mediaClientRef.current) {
-        mediaClientRef.current.unpublishMedia(kind);
-      }
+      mediaClientRef.current?.unpublishMedia(kind);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(`Failed to unpublish ${kind}`);
-      setError(error);
+      setError(err instanceof Error ? err : new Error(`Failed to unpublish ${kind}`));
     }
   }, []);
 
   const setAudioEnabled = useCallback((enabled: boolean) => {
     try {
-      if (mediaClientRef.current) {
-        mediaClientRef.current.setAudioEnabled(enabled);
-      }
+      mediaClientRef.current?.setAudioEnabled(enabled);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to toggle audio');
-      setError(error);
+      setError(err instanceof Error ? err : new Error('Failed to toggle audio'));
     }
   }, []);
 
   const setVideoEnabled = useCallback((enabled: boolean) => {
     try {
-      if (mediaClientRef.current) {
-        mediaClientRef.current.setVideoEnabled(enabled);
-      }
+      mediaClientRef.current?.setVideoEnabled(enabled);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to toggle video');
-      setError(error);
+      setError(err instanceof Error ? err : new Error('Failed to toggle video'));
     }
   }, []);
 
-  useEffect(() => {
-    if (!signalingClient || roomState !== 'joined') {
-      return;
+  const startScreenShare = useCallback(async (): Promise<MediaStream | null> => {
+    try {
+      if (!mediaClientRef.current) throw new Error('Mediasoup client not initialized');
+      const stream = await mediaClientRef.current.startScreenShare();
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+      return stream;
+    } catch (err) {
+      if ((err as Error).name === 'NotAllowedError') return null; // user cancelled
+      console.error('Screen share failed', { roomId, peerId, error: err });
+      setError(err instanceof Error ? err : new Error('Failed to start screen share'));
+      return null;
     }
+  }, [roomId, peerId]);
+
+  const stopScreenShare = useCallback(() => {
+    try {
+      mediaClientRef.current?.stopScreenShare();
+    } catch {
+      // ignore
+    }
+    if (screenStream) {
+      screenStream.getTracks().forEach((t) => t.stop());
+      setScreenStream(null);
+    }
+    setIsScreenSharing(false);
+  }, [screenStream]);
+
+  const sendChatMessage = useCallback(
+    (text: string) => {
+      if (!signalingClient || !text.trim()) return;
+
+      setChatMessages((prev) => [
+        ...prev,
+        { id: `self-${Date.now()}`, peerId, text: text.trim(), ts: Date.now(), isSelf: true },
+      ]);
+
+      void signalingClient.sendChatMessage(roomId, text.trim(), peerId).catch((err) => {
+        console.error('Failed to send chat message', err);
+      });
+    },
+    [signalingClient, roomId, peerId],
+  );
+
+  // Signaling event listeners
+  useEffect(() => {
+    if (!signalingClient || roomState !== 'joined') return;
 
     const listeners: (() => void)[] = [];
 
     listeners.push(
       signalingClient.on('room.participant-joined', ({ participantId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
-          remoteProducersRef.current.set(remotePeerId, '');
           void syncRemoteProducers().catch((err) => {
-            const errorMessage = err instanceof Error ? err.message : String(err);
-            console.error('Failed to sync remote producers after participant joined', {
-              roomId,
-              peerId,
-              remotePeerId,
-              error: errorMessage,
-            });
-            const error = err instanceof Error ? err : new Error('Failed to sync remote producers');
-            setError(error);
+            console.error('Sync failed after participant joined', { roomId, peerId, remotePeerId, error: err });
           });
         }
       }),
@@ -329,51 +304,72 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
     listeners.push(
       signalingClient.on('room.participant-left', ({ participantId: remotePeerId }) => {
-        if (remotePeerId !== peerId) {
-          removeRemotePeer(remotePeerId);
-        }
+        if (remotePeerId === peerId) return;
+
+        // Remove all streams keyed to this peer (camera + screen)
+        setRemoteStreams((prev) => {
+          const updated = new Map(prev);
+          for (const [key, stream] of updated) {
+            if (key === remotePeerId || key.startsWith(`${remotePeerId}:`)) {
+              stream.getTracks().forEach((track) => track.stop());
+              updated.delete(key);
+            }
+          }
+          return updated;
+        });
+
+        // Clean up producerOwner but leave subscribedProducerIdsRef intact.
+        // Keeping stale IDs prevents the periodic sync from re-subscribing
+        // to producers that are still alive on mediasoup right after the peer
+        // disconnects. New sessions always generate fresh producer UUIDs.
+        const producerIdsToDelete: string[] = [];
+        producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
+          if (ownerPeerId === remotePeerId) producerIdsToDelete.push(producerId);
+        });
+        producerIdsToDelete.forEach((id) => producerOwnerRef.current.delete(id));
       }),
     );
 
     listeners.push(
-      signalingClient.on('signal.received', ({ participantId: remotePeerId, kind, data }) => {
-        if (remotePeerId !== peerId) {
-          console.info(`Received ${kind} from ${remotePeerId}:`, data);
-        }
+      signalingClient.on('chat.received', ({ participantId, text, ts }) => {
+        setChatMessages((prev) => [
+          ...prev,
+          { id: `${participantId}-${ts}`, peerId: participantId, text, ts, isSelf: false },
+        ]);
       }),
     );
 
     return () => {
       listeners.forEach((unsub) => unsub());
     };
-  }, [removeRemotePeer, signalingClient, roomState, peerId]);
+  }, [signalingClient, roomState, peerId, syncRemoteProducers]);
 
+  // Periodic producer discovery
   useEffect(() => {
-    if (roomState !== 'joined') {
-      return;
-    }
+    if (roomState !== 'joined') return;
 
     const runSync = () => {
       void syncRemoteProducers().catch((err) => {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error('Periodic remote producer sync failed', {
-          roomId,
-          peerId,
-          error: errorMessage,
-        });
-        const error = err instanceof Error ? err : new Error('Failed to sync remote producers');
-        setError(error);
+        console.error('Periodic sync failed', { roomId, peerId, error: err instanceof Error ? err.message : err });
       });
     };
 
     runSync();
     const intervalId = setInterval(runSync, 1500);
-
-    return () => {
-      clearInterval(intervalId);
-    };
+    return () => clearInterval(intervalId);
   }, [roomState, syncRemoteProducers]);
 
+  // Best-effort cleanup when the tab is closed/refreshed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const url = `${env.NEXT_PUBLIC_MEDIASOUP_URL}/rooms/${roomId}/peers/${peerId}`;
+      navigator.sendBeacon(url);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [env.NEXT_PUBLIC_MEDIASOUP_URL, roomId, peerId]);
+
+  // Auto-join
   useEffect(() => {
     if (autoJoin && isSignalingConnected && !initRef.current && roomState === 'idle') {
       initRef.current = true;
@@ -386,11 +382,17 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     error,
     localStream,
     remoteStreams,
+    chatMessages,
+    screenStream,
+    isScreenSharing,
     joinRoom,
     leaveRoom,
     publishMedia,
     unpublishMedia,
     setAudioEnabled,
     setVideoEnabled,
+    startScreenShare,
+    stopScreenShare,
+    sendChatMessage,
   };
 }

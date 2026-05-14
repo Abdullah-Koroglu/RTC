@@ -170,8 +170,8 @@ export class RoomManager {
     return producers;
   }
 
-  listRoomProducers(roomId: RoomId): Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video' }> {
-    const producers: Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video' }> = [];
+  listRoomProducers(roomId: RoomId): Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video'; appData: Record<string, unknown> }> {
+    const producers: Array<{ producerId: ProducerId; peerId: string; kind: 'audio' | 'video'; appData: Record<string, unknown> }> = [];
 
     for (const peer of this.peers.listRoomPeers(roomId)) {
       for (const producer of peer.producers.values()) {
@@ -180,6 +180,7 @@ export class RoomManager {
           producerId: producer.id,
           peerId: peer.id,
           kind,
+          appData: (producer.appData as Record<string, unknown>) ?? {},
         });
       }
     }

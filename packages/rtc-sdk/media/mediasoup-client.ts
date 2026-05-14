@@ -33,6 +33,7 @@ export interface RemoteProducer {
   producerId: string;
   peerId: string;
   kind: 'audio' | 'video';
+  appData?: Record<string, unknown>;
 }
 
 interface RemoteProducerListResponse {
@@ -62,6 +63,7 @@ export class MediasoupClient {
   private consumers = new Map<string, Consumer>();
   private localStream: LocalStream | null = null;
   private mediasooupClient: any = null;
+  private screenProducer: Producer | null = null;
   private unloadHandlerRegistered = false;
   private turnCredentials: TurnCredentialsResponse | null = null;
 
@@ -311,6 +313,46 @@ export class MediasoupClient {
     }
   }
 
+  get isScreenSharing(): boolean {
+    return this.screenProducer !== null && !this.screenProducer.closed;
+  }
+
+  async startScreenShare(): Promise<MediaStream> {
+    if (!this.sendTransport) {
+      throw new Error('Send transport not initialized');
+    }
+
+    const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true, audio: false }) as MediaStream;
+    const videoTrack = stream.getVideoTracks()[0];
+    if (!videoTrack) {
+      throw new Error('No video track in screen capture stream');
+    }
+
+    try {
+      const producer = await this.sendTransport.produce({
+        track: videoTrack,
+        appData: { mediaTag: 'screen' },
+      });
+      this.screenProducer = producer;
+
+      videoTrack.addEventListener('ended', () => {
+        this.stopScreenShare();
+      });
+
+      return stream;
+    } catch (error) {
+      stream.getTracks().forEach((t) => t.stop());
+      throw error;
+    }
+  }
+
+  stopScreenShare(): void {
+    if (this.screenProducer) {
+      this.screenProducer.close();
+      this.screenProducer = null;
+    }
+  }
+
   /**
    * Subscribe to remote media from a producer
    */
@@ -406,6 +448,12 @@ export class MediasoupClient {
    * Close all transports and cleanup
    */
   async close(): Promise<void> {
+    // Close screen share producer
+    if (this.screenProducer) {
+      this.screenProducer.close();
+      this.screenProducer = null;
+    }
+
     // Close all producers
     for (const producer of this.producers.values()) {
       producer.close();

@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Check, Copy, Mic, MicOff, PhoneOff, Users, Video, VideoOff } from 'lucide-react';
+import { Check, Copy, MessageSquare, Mic, MicOff, Monitor, MonitorOff, PhoneOff, Users, Video, VideoOff } from 'lucide-react';
 import { useRoom } from '@/hooks/useRoom';
 import { VideoTile } from '@/components/VideoTile';
+import { ChatPanel } from '@/components/ChatPanel';
 import { generateUUID } from '@/lib/uuid';
 
 export default function RoomPage() {
@@ -15,13 +16,30 @@ export default function RoomPage() {
   const roomId = decodeURIComponent(params.roomId ?? '');
   const peerIdFromQuery = searchParams.get('peerId')?.trim();
   const [peerId] = useState(() => peerIdFromQuery ?? `peer-${generateUUID().slice(0, 8)}`);
+
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [hasPublished, setHasPublished] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  const { roomState, error, localStream, remoteStreams, leaveRoom, publishMedia, setAudioEnabled, setVideoEnabled } =
-    useRoom({ roomId, peerId, autoJoin: true });
+  const {
+    roomState,
+    error,
+    localStream,
+    remoteStreams,
+    chatMessages,
+    screenStream,
+    isScreenSharing,
+    leaveRoom,
+    publishMedia,
+    setAudioEnabled,
+    setVideoEnabled,
+    startScreenShare,
+    stopScreenShare,
+    sendChatMessage,
+  } = useRoom({ roomId, peerId, autoJoin: true });
 
   useEffect(() => {
     if (roomState !== 'joined' || hasPublished) return;
@@ -32,8 +50,14 @@ export default function RoomPage() {
     void startPublishing();
   }, [roomState, hasPublished, publishMedia]);
 
+  // Badge: count unread messages when chat is closed
+  useEffect(() => {
+    if (isChatOpen || chatMessages.length === 0) return;
+    const last = chatMessages.at(-1);
+    if (last && !last.isSelf) setUnreadCount((n) => n + 1);
+  }, [chatMessages, isChatOpen]);
+
   const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
-  const participantCount = remoteEntries.length + (localStream ? 1 : 0);
 
   const onToggleAudio = () => {
     const next = !isAudioEnabled;
@@ -47,9 +71,17 @@ export default function RoomPage() {
     setIsVideoEnabled(next);
   };
 
+  const onToggleScreen = () => {
+    if (isScreenSharing) stopScreenShare();
+    else void startScreenShare();
+  };
+
   const onLeave = async () => {
-    await leaveRoom();
-    router.push('/');
+    try {
+      await leaveRoom();
+    } finally {
+      router.push('/');
+    }
   };
 
   const onCopyRoomId = () => {
@@ -58,47 +90,52 @@ export default function RoomPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const statusColor =
+  const handleOpenChat = () => {
+    setIsChatOpen(true);
+    setUnreadCount(0);
+  };
+
+  const statusDot =
+    roomState === 'joined' ? 'bg-emerald-400' : roomState === 'error' ? 'bg-rose-400' : 'bg-amber-400';
+  const statusText =
     roomState === 'joined' ? 'text-emerald-400' : roomState === 'error' ? 'text-rose-400' : 'text-amber-400';
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.12),_transparent_28%),linear-gradient(180deg,_#020617_0%,_#020617_45%,_#0f172a_100%)] px-3 py-3 sm:px-4 sm:py-4 md:px-6">
-      <div className="mx-auto flex min-h-[calc(100dvh-1.5rem)] w-full max-w-7xl flex-col gap-4 sm:min-h-[calc(100dvh-2rem)]">
+    <main className="flex min-h-screen flex-col bg-slate-950 px-4 py-4 md:px-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4">
 
-        {/* Header */}
-        <header className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-4 shadow-2xl shadow-slate-950/30 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-3">
-          <div className="min-w-0 space-y-1">
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-3 backdrop-blur">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="truncate text-sm font-semibold text-slate-100 sm:text-base" title={roomId}>
+              <h1
+                className="max-w-xs truncate text-base font-semibold text-slate-100 sm:max-w-sm md:max-w-lg"
+                title={roomId}
+              >
                 {roomId}
               </h1>
               <button
                 type="button"
                 onClick={onCopyRoomId}
-                title="Copy room ID"
+                title="Oda ID'sini kopyala"
                 className="shrink-0 text-slate-500 transition hover:text-slate-300"
               >
                 {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
               </button>
             </div>
-            <p className="text-xs text-slate-500">{peerId}</p>
+            <p className="mt-0.5 text-xs text-slate-500">{peerId}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs sm:justify-end">
-            <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 text-slate-300">
-              {participantCount} participant{participantCount === 1 ? '' : 's'}
-            </span>
-            <span className="rounded-full border border-slate-700 bg-slate-950/50 px-2.5 py-1 capitalize text-slate-300">
-              <span className={`mr-1 inline-block h-1.5 w-1.5 rounded-full ${roomState === 'joined' ? 'bg-emerald-400' : roomState === 'error' ? 'bg-rose-400' : 'bg-amber-400'}`} />
-              {roomState}
-            </span>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+            <span className={statusText}>{roomState}</span>
           </div>
         </header>
 
-        {/* Alerts */}
+        {/* ── Alerts ─────────────────────────────────────────────────── */}
         {roomState === 'joining' && (
           <div className="flex items-center gap-2 rounded-xl border border-amber-900/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-300">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-            Joining room…
+            Odaya katılınıyor…
           </div>
         )}
         {error && (
@@ -107,31 +144,61 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Video grid */}
-        <section className="grid flex-1 auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {localStream && <VideoTile stream={localStream} label={`${peerId} (You)`} muted mirrored />}
+        {/* ── Main: video grid + chat panel ──────────────────────────── */}
+        <div className={`flex flex-1 gap-3 ${isChatOpen ? 'flex-col md:flex-row' : ''}`}>
 
-          {remoteEntries.map(([remotePeerId, stream]) => (
-            <VideoTile key={remotePeerId} stream={stream} label={remotePeerId} />
-          ))}
+          {/* Video grid */}
+          <section
+            className={`grid auto-rows-fr gap-3 ${
+              isChatOpen
+                ? 'flex-1 grid-cols-1 sm:grid-cols-2'
+                : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'
+            }`}
+          >
+            {localStream && (
+              <VideoTile stream={localStream} label={`${peerId} (Sen)`} muted mirrored />
+            )}
 
-          {roomState === 'joined' && remoteEntries.length === 0 && (
-            <div className="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-6 text-center sm:min-h-[280px] sm:p-8">
-              <Users size={32} className="mb-3 text-slate-600" />
-              <p className="text-sm font-medium text-slate-300">Waiting for participants…</p>
-              <p className="mt-1 max-w-xs text-xs leading-5 text-slate-500">Share the room ID to invite others. New participants will appear here automatically.</p>
+            {screenStream && (
+              <VideoTile stream={screenStream} label={`${peerId} (Ekranın)`} muted />
+            )}
+
+            {remoteEntries.map(([key, stream]) => {
+              const isScreen = key.endsWith(':screen');
+              const label = isScreen ? `${key.replace(':screen', '')} (Ekran)` : key;
+              return <VideoTile key={key} stream={stream} label={label} />;
+            })}
+
+            {roomState === 'joined' && remoteEntries.length === 0 && (
+              <div className="flex aspect-video flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-8 text-center">
+                <Users size={32} className="mb-3 text-slate-600" />
+                <p className="text-sm font-medium text-slate-400">Katılımcı bekleniyor…</p>
+                <p className="mt-1 text-xs text-slate-600">Oda ID&apos;sini paylaşarak davet et</p>
+              </div>
+            )}
+          </section>
+
+          {/* Chat panel */}
+          {isChatOpen && (
+            <div className="h-[420px] w-full shrink-0 md:h-auto md:w-80 lg:w-96">
+              <ChatPanel
+                messages={chatMessages}
+                peerId={peerId}
+                onSend={sendChatMessage}
+                onClose={() => setIsChatOpen(false)}
+              />
             </div>
           )}
-        </section>
+        </div>
 
-        {/* Controls */}
-        <footer className="sticky bottom-3 flex justify-center pb-[env(safe-area-inset-bottom)]">
-          <div className="flex w-full flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/90 px-3 py-3 shadow-xl backdrop-blur sm:w-auto sm:px-4">
-            {/* Audio toggle */}
+        {/* ── Controls ───────────────────────────────────────────────── */}
+        <footer className="sticky bottom-4 flex justify-center">
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-3 shadow-xl backdrop-blur">
+
             <button
               type="button"
               onClick={onToggleAudio}
-              title={isAudioEnabled ? 'Mute' : 'Unmute'}
+              title={isAudioEnabled ? 'Mikrofonu kapat' : 'Mikrofonu aç'}
               className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
                 isAudioEnabled
                   ? 'border border-slate-700 text-slate-300 hover:bg-slate-800'
@@ -141,11 +208,10 @@ export default function RoomPage() {
               {isAudioEnabled ? <Mic size={18} /> : <MicOff size={18} />}
             </button>
 
-            {/* Video toggle */}
             <button
               type="button"
               onClick={onToggleVideo}
-              title={isVideoEnabled ? 'Stop video' : 'Start video'}
+              title={isVideoEnabled ? 'Kamerayı kapat' : 'Kamerayı aç'}
               className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
                 isVideoEnabled
                   ? 'border border-slate-700 text-slate-300 hover:bg-slate-800'
@@ -155,19 +221,46 @@ export default function RoomPage() {
               {isVideoEnabled ? <Video size={18} /> : <VideoOff size={18} />}
             </button>
 
-            <div className="mx-1 hidden h-6 w-px bg-slate-700 sm:block" />
+            <button
+              type="button"
+              onClick={onToggleScreen}
+              title={isScreenSharing ? 'Ekran paylaşımını durdur' : 'Ekranı paylaş'}
+              className={`flex h-11 w-11 items-center justify-center rounded-xl transition ${
+                isScreenSharing
+                  ? 'bg-cyan-600 text-white hover:bg-cyan-500'
+                  : 'border border-slate-700 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              {isScreenSharing ? <MonitorOff size={18} /> : <Monitor size={18} />}
+            </button>
 
-            {/* Leave */}
+            <button
+              type="button"
+              onClick={handleOpenChat}
+              title="Sohbet"
+              className="relative flex h-11 w-11 items-center justify-center rounded-xl border border-slate-700 text-slate-300 transition hover:bg-slate-800"
+            >
+              <MessageSquare size={18} />
+              {unreadCount > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-bold text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            <div className="mx-1 h-6 w-px bg-slate-700" />
+
             <button
               type="button"
               onClick={() => void onLeave()}
-              title="Leave room"
+              title="Görüşmeden ayrıl"
               className="flex h-11 w-11 items-center justify-center rounded-xl bg-rose-600 text-white transition hover:bg-rose-500"
             >
               <PhoneOff size={18} />
             </button>
           </div>
         </footer>
+
       </div>
     </main>
   );
