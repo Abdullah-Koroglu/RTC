@@ -332,10 +332,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     );
 
     listeners.push(
-      signalingClient.on('chat.received', ({ participantId, text, ts }) => {
+      signalingClient.on('chat.received', ({ participantId, text, ts, senderName }) => {
+        // Skip echo — own message is already added optimistically in sendChatMessage
+        if (participantId === peerId) return;
         setChatMessages((prev) => [
           ...prev,
-          { id: `${participantId}-${ts}`, peerId: participantId, text, ts, isSelf: false },
+          { id: `${participantId}-${ts}`, peerId: senderName || participantId, text, ts, isSelf: false },
         ]);
       }),
     );
