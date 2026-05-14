@@ -1,22 +1,34 @@
 import { env } from '@/config/env';
+import { logger } from '@/core/logger';
 import type { Peer } from '@/peers/peer';
 import type { Router, TransportConnectInput, WebRtcTransport } from '@/types/mediasoup';
 
 export class TransportManager {
   async createWebRtcTransport(router: Router, peer: Peer, appData: Record<string, unknown> = {}): Promise<WebRtcTransport> {
+    const listenInfos: Array<{ ip: string; announcedAddress?: string; protocol: 'udp' | 'tcp' }> = [];
+
+    if (env.MEDIASOUP_ENABLE_UDP) {
+      listenInfos.push({
+        ip: env.MEDIASOUP_LISTEN_IP,
+        announcedAddress: env.MEDIASOUP_ANNOUNCED_IP,
+        protocol: 'udp',
+      });
+    }
+
+    if (env.MEDIASOUP_ENABLE_TCP) {
+      listenInfos.push({
+        ip: env.MEDIASOUP_LISTEN_IP,
+        announcedAddress: env.MEDIASOUP_ANNOUNCED_IP,
+        protocol: 'tcp',
+      });
+    }
+
+    if (listenInfos.length === 0) {
+      throw new Error('At least one of MEDIASOUP_ENABLE_UDP or MEDIASOUP_ENABLE_TCP must be true');
+    }
+
     const transport = await router.createWebRtcTransport({
-      listenInfos: [
-        {
-          ip: env.MEDIASOUP_LISTEN_IP,
-          announcedAddress: env.MEDIASOUP_ANNOUNCED_IP,
-          protocol: 'udp',
-        },
-        {
-          ip: env.MEDIASOUP_LISTEN_IP,
-          announcedAddress: env.MEDIASOUP_ANNOUNCED_IP,
-          protocol: 'tcp',
-        },
-      ],
+      listenInfos,
       enableUdp: env.MEDIASOUP_ENABLE_UDP,
       enableTcp: env.MEDIASOUP_ENABLE_TCP,
       preferUdp: env.MEDIASOUP_PREFER_UDP,
@@ -30,6 +42,26 @@ export class TransportManager {
 
     peer.transports.set(transport.id, transport);
 
+    transport.on('icestatechange', (state) => {
+      logger.info({
+        transportId: transport.id,
+        peerId: peer.id,
+        roomId: (transport.appData as Record<string, unknown>).roomId,
+        type: (transport.appData as Record<string, unknown>).type,
+        state,
+      }, 'transport_ice_state_changed');
+    });
+
+    transport.on('dtlsstatechange', (state) => {
+      logger.info({
+        transportId: transport.id,
+        peerId: peer.id,
+        roomId: (transport.appData as Record<string, unknown>).roomId,
+        type: (transport.appData as Record<string, unknown>).type,
+        state,
+      }, 'transport_dtls_state_changed');
+    });
+
     transport.observer.on('close', () => {
       peer.transports.delete(transport.id);
     });
@@ -38,7 +70,23 @@ export class TransportManager {
   }
 
   async connectTransport(transport: WebRtcTransport, input: TransportConnectInput): Promise<void> {
+    logger.info({
+      transportId: transport.id,
+      roomId: (transport.appData as Record<string, unknown>).roomId,
+      peerId: (transport.appData as Record<string, unknown>).peerId,
+      type: (transport.appData as Record<string, unknown>).type,
+    }, 'transport_connect_requested');
+
     await transport.connect({ dtlsParameters: input.dtlsParameters });
+
+    logger.info({
+      transportId: transport.id,
+      roomId: (transport.appData as Record<string, unknown>).roomId,
+      peerId: (transport.appData as Record<string, unknown>).peerId,
+      type: (transport.appData as Record<string, unknown>).type,
+      iceState: transport.iceState,
+      dtlsState: transport.dtlsState,
+    }, 'transport_connect_completed');
   }
 
   closePeerTransports(peer: Peer): void {

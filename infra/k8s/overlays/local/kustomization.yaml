@@ -10,12 +10,11 @@ patches:
     patch: |-
       - op: remove
         path: /metadata/annotations/cert-manager.io~1cluster-issuer
-      - op: add
-        path: /metadata/annotations/nginx.ingress.kubernetes.io~1ssl-redirect
-        value: "true"
+      - op: remove
+        path: /spec/tls
       - op: replace
         path: /metadata/annotations/nginx.ingress.kubernetes.io~1cors-allow-origin
-        value: "https://app.local.rtc, http://app.local.rtc, http://localhost:3000"
+        value: "http://app.local.rtc, https://app.local.rtc, http://localhost:3000"
       - op: replace
         path: /spec/rules/0/host
         value: app.local.rtc
@@ -28,21 +27,6 @@ patches:
       - op: replace
         path: /spec/rules/3/host
         value: mediasoup.local.rtc
-      - op: replace
-        path: /spec/tls/0/hosts/0
-        value: app.local.rtc
-      - op: replace
-        path: /spec/tls/0/hosts/1
-        value: api.local.rtc
-      - op: replace
-        path: /spec/tls/0/hosts/2
-        value: signal.local.rtc
-      - op: replace
-        path: /spec/tls/0/hosts/3
-        value: mediasoup.local.rtc
-      - op: replace
-        path: /spec/tls/0/secretName
-        value: rtc-local-tls
   - target:
       kind: ConfigMap
       name: rtc-app-config
@@ -53,19 +37,16 @@ patches:
         value: development
       - op: replace
         path: /data/NEXT_PUBLIC_API_URL
-        value: https://api.local.rtc
+        value: http://api.local.rtc
       - op: replace
         path: /data/NEXT_PUBLIC_SIGNALING_URL
-        value: wss://signal.local.rtc/ws
-      - op: replace
-        path: /data/NEXT_PUBLIC_MEDIASOUP_URL
-        value: https://mediasoup.local.rtc
+        value: ws://signal.local.rtc/ws
       - op: replace
         path: /data/CORS_ORIGIN
-        value: https://app.local.rtc
+        value: http://app.local.rtc
       - op: replace
         path: /data/ALLOWED_ORIGINS
-        value: https://app.local.rtc
+        value: http://app.local.rtc
   - target:
       kind: ConfigMap
       name: rtc-turn-config
@@ -76,7 +57,7 @@ patches:
         value: turn.local.rtc
       - op: replace
         path: /data/TURN_EXTERNAL_IP
-        value: 127.0.0.1
+        value: 172.16.17.185
   - target:
       kind: ConfigMap
       name: rtc-mediasoup-config
@@ -84,10 +65,19 @@ patches:
     patch: |-
       - op: replace
         path: /data/MEDIASOUP_ANNOUNCED_IP
-        value: 127.0.0.1
+        value: 172.16.17.185
+      - op: replace
+        path: /data/MEDIASOUP_ENABLE_UDP
+        value: 'false'
+      - op: replace
+        path: /data/MEDIASOUP_ENABLE_TCP
+        value: 'true'
+      - op: replace
+        path: /data/MEDIASOUP_PREFER_UDP
+        value: 'false'
       - op: replace
         path: /data/MEDIASOUP_WORKER_COUNT
-        value: '2'
+        value: '1'
   - target:
       kind: Deployment
       name: web
@@ -128,19 +118,52 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 1
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: web-hpa
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 1
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: signaling-hpa
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 1
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: mediasoup-hpa
+      namespace: rtc-apps
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 1
 images:
   - name: ghcr.io/your-org/rtc-web
     newName: localhost:5111/rtc-web
-    newTag: local
+    newTag: local-fix2
   - name: ghcr.io/your-org/rtc-api
     newName: localhost:5111/rtc-api
-    newTag: local
+    newTag: local-fix1
   - name: ghcr.io/your-org/rtc-signaling
     newName: localhost:5111/rtc-signaling
     newTag: local
   - name: ghcr.io/your-org/rtc-mediasoup
     newName: localhost:5111/rtc-mediasoup
-    newTag: local
+    newTag: local-fix4
   - name: ghcr.io/your-org/rtc-coturn
     newName: localhost:5111/rtc-coturn
     newTag: local

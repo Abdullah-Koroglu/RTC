@@ -13,28 +13,43 @@ export function VideoTile({ stream, label, muted = false, mirrored = false }: Vi
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (!videoRef.current) {
-      return;
-    }
+    if (!videoRef.current || !stream) return;
 
-    videoRef.current.srcObject = stream;
-    return () => {
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
+    const video = videoRef.current;
+    video.srcObject = stream;
+    video.muted = muted;
+
+    const play = () => void video.play().catch(() => undefined);
+
+    const onTrackAdded = () => {
+      video.srcObject = null;
+      video.srcObject = stream;
+      play();
     };
-  }, [stream]);
+
+    stream.addEventListener('addtrack', onTrackAdded);
+    play();
+
+    return () => {
+      stream.removeEventListener('addtrack', onTrackAdded);
+      video.srcObject = null;
+    };
+  }, [stream, muted]);
 
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+    <article className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={muted}
-        className={mirrored ? 'aspect-video w-full bg-slate-950 object-cover [transform:scaleX(-1)]' : 'aspect-video w-full bg-slate-950 object-cover'}
+        className="aspect-video w-full bg-slate-950 block"
+        style={{ objectFit: 'cover', transform: mirrored ? 'scaleX(-1)' : undefined }}
       />
-      <p className="border-t border-slate-800 px-3 py-2 text-xs font-medium text-slate-200">{label}</p>
+      {/* Gradient overlay + label */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 pb-2.5 pt-6">
+        <span className="text-xs font-medium text-white/90">{label}</span>
+      </div>
     </article>
   );
 }

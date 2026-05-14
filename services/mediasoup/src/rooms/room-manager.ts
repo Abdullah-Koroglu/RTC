@@ -41,6 +41,13 @@ export class RoomManager {
 
   async joinRoom(roomId: RoomId, peerId: string): Promise<{ routerRtpCapabilities: RtpCapabilities }> {
     const { router } = await this.routers.getOrCreate(roomId);
+
+    // A reconnect with the same peerId must replace the previous peer to avoid stale producers/transports.
+    if (this.peers.get(roomId, peerId)) {
+      this.peers.remove(roomId, peerId);
+      logger.info({ roomId, peerId }, 'peer_replaced_on_rejoin');
+    }
+
     this.peers.getOrCreate(roomId, peerId);
 
     if (!this.rooms.has(roomId)) {
@@ -131,8 +138,6 @@ export class RoomManager {
     }
 
     const consumer = await this.consumers.createConsumer(roomRouter.router, peer, producer, input.rtpCapabilities, input);
-
-    await this.consumers.resume(consumer);
 
     logger.info({ roomId: input.roomId, peerId: input.peerId, consumerId: consumer.id, producerId: producer.id, kind: consumer.kind }, 'consumer_created');
 

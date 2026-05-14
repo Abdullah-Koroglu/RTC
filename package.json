@@ -39,10 +39,10 @@
   },
   "lint-staged": {
     "!(*.test).{ts,tsx}": [
-      "pnpm exec eslint --max-warnings=0 --fix"
+      "pnpm exec eslint --max-warnings=0 --no-warn-ignored --fix"
     ],
     "*.{js,cjs,mjs}": [
-      "pnpm exec eslint --max-warnings=0 --fix"
+      "pnpm exec eslint --max-warnings=0 --no-warn-ignored --fix"
     ],
     "*.{json,md,yml,yaml}": [
       "pnpm exec prettier --write"

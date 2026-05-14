@@ -23,9 +23,15 @@ export function buildApp(ctx: AppContext): FastifyInstance {
   void app.register(cors, {
     origin: [
       'http://app.local.rtc',
+      'https://app.local.rtc',
       'http://localhost:3000',
-      process.env.CORS_ORIGIN ?? ''
-    ].filter(Boolean),
+      'https://localhost:3000',
+      process.env.CORS_ORIGIN ?? '',
+      process.env.ALLOWED_ORIGINS ?? '',
+    ]
+      .flatMap((value) => value.split(','))
+      .map((value) => value.trim())
+      .filter(Boolean),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
   });

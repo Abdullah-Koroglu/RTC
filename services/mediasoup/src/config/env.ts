@@ -2,6 +2,28 @@ import { cpus } from 'node:os';
 import { z } from 'zod';
 import type { WorkerLogTag } from '@/types/mediasoup';
 
+const booleanFromEnv = z.preprocess((value) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off', ''].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return value;
+}, z.boolean());
+
 const workerTags = [
   'info',
   'ice',
@@ -46,9 +68,9 @@ const schema = z.object({
   MEDIASOUP_WORKER_RTC_MAX_PORT: z.coerce.number().int().min(10000).max(65535).default(49999),
   MEDIASOUP_LISTEN_IP: z.string().min(1).default('0.0.0.0'),
   MEDIASOUP_ANNOUNCED_IP: z.string().min(1).optional(),
-  MEDIASOUP_ENABLE_UDP: z.coerce.boolean().default(true),
-  MEDIASOUP_ENABLE_TCP: z.coerce.boolean().default(true),
-  MEDIASOUP_PREFER_UDP: z.coerce.boolean().default(true),
+  MEDIASOUP_ENABLE_UDP: booleanFromEnv.default(true),
+  MEDIASOUP_ENABLE_TCP: booleanFromEnv.default(true),
+  MEDIASOUP_PREFER_UDP: booleanFromEnv.default(true),
   MEDIASOUP_INITIAL_AVAILABLE_OUTGOING_BITRATE: z.coerce.number().int().positive().default(1000000),
   MEDIASOUP_MAX_INCOMING_BITRATE: z.coerce.number().int().positive().default(1500000),
   MEDIASOUP_LOG_TAGS: z.string().default('ice,dtls,rtp,rtcp,bwe,score,simulcast,svc'),

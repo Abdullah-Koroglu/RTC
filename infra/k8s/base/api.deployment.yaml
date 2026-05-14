@@ -59,6 +59,16 @@ spec:
                 configMapKeyRef:
                   name: rtc-app-config
                   key: CORS_ORIGIN
+            - name: TURN_REALM
+              valueFrom:
+                configMapKeyRef:
+                  name: rtc-turn-config
+                  key: TURN_REALM
+            - name: TURN_SHARED_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: rtc-turn-secret
+                  key: TURN_SHARED_SECRET
             - name: REDIS_URL
               valueFrom:
                 secretKeyRef:

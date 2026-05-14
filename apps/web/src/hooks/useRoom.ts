@@ -44,6 +44,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
 
   const mediaClientRef = useRef<MediasoupClient | null>(null);
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   const remoteProducersRef = useRef<Map<string, string>>(new Map());
   const remoteConsumersRef = useRef<Map<string, string>>(new Map());
   const producerOwnerRef = useRef<Map<string, string>>(new Map());
@@ -70,6 +71,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     try {
       const mediaClient = new MediasoupClient({
         baseUrl: env.NEXT_PUBLIC_MEDIASOUP_URL,
+        apiBaseUrl: env.NEXT_PUBLIC_API_URL,
         roomId,
         peerId,
       });
@@ -88,7 +90,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       setError(error);
       throw error;
     }
-  }, [roomId, peerId, env.NEXT_PUBLIC_MEDIASOUP_URL]);
+  }, [roomId, peerId, env.NEXT_PUBLIC_API_URL, env.NEXT_PUBLIC_MEDIASOUP_URL]);
 
   const joinRoom = useCallback(async () => {
     try {
@@ -122,9 +124,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         await signalingClient.leaveRoom(roomId);
       }
 
-      remoteStreams.forEach((stream) => {
+      remoteStreamsRef.current.forEach((stream) => {
         stream.getTracks().forEach((track) => track.stop());
       });
+      remoteStreamsRef.current.clear();
       setRemoteStreams(new Map());
 
       if (mediaClientRef.current) {
@@ -146,7 +149,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       console.error('Error leaving room:', err);
       setRoomState('idle');
     }
-  }, [remoteStreams, localStream, signalingClient, roomId]);
+  }, [localStream, signalingClient, roomId]);
 
   const syncRemoteProducers = useCallback(async () => {
     if (!mediaClientRef.current || roomState !== 'joined') {
@@ -171,10 +174,14 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         continue;
       }
 
+      subscribedProducerIdsRef.current.add(producer.producerId);
+
       let stream: MediaStream;
       try {
         stream = await mediaClientRef.current.subscribeMedia(producer.producerId, producer.peerId);
+        console.info('[useRoom] subscribeMedia returned', { peerId: producer.peerId, tracks: stream.getTracks().map(t => t.kind) });
       } catch (err) {
+        subscribedProducerIdsRef.current.delete(producer.producerId);
         console.error('Remote producer subscription failed', {
           roomId,
           peerId,
@@ -185,22 +192,19 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         continue;
       }
 
-      setRemoteStreams((prev) => {
-        const updated = new Map(prev);
-        const target = updated.get(producer.peerId) ?? new MediaStream();
+      const target = remoteStreamsRef.current.get(producer.peerId) ?? new MediaStream();
 
-        for (const track of stream.getTracks()) {
-          if (!target.getTracks().some((existingTrack) => existingTrack.id === track.id)) {
-            target.addTrack(track);
-          }
+      for (const track of stream.getTracks()) {
+        if (!target.getTracks().some((existingTrack) => existingTrack.id === track.id)) {
+          target.addTrack(track);
         }
+      }
 
-        updated.set(producer.peerId, target);
-        return updated;
-      });
+      remoteStreamsRef.current.set(producer.peerId, target);
+      setRemoteStreams(new Map(remoteStreamsRef.current));
+      console.info('[useRoom] setRemoteStreams updated', { peerId: producer.peerId, trackCount: target.getTracks().length, mapSize: remoteStreamsRef.current.size });
 
       producerOwnerRef.current.set(producer.producerId, producer.peerId);
-      subscribedProducerIdsRef.current.add(producer.producerId);
     }
   }, [peerId, roomState]);
 
@@ -292,15 +296,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('room.participant-left', ({ participantId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
-          setRemoteStreams((prev) => {
-            const updated = new Map(prev);
-            const stream = updated.get(remotePeerId);
-            if (stream) {
-              stream.getTracks().forEach((track) => track.stop());
-              updated.delete(remotePeerId);
-            }
-            return updated;
-          });
+          const stream = remoteStreamsRef.current.get(remotePeerId);
+          if (stream) {
+            stream.getTracks().forEach((track) => track.stop());
+            remoteStreamsRef.current.delete(remotePeerId);
+            setRemoteStreams(new Map(remoteStreamsRef.current));
+          }
 
           remoteProducersRef.current.delete(remotePeerId);
           const consumersToRemove: string[] = [];

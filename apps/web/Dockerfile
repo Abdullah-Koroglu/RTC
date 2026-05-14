@@ -16,9 +16,8 @@ COPY packages/tsconfig/package.json packages/tsconfig/package.json
 COPY packages/eslint-config/package.json packages/eslint-config/package.json
 RUN pnpm install --frozen-lockfile
 
-FROM base AS builder
+FROM deps AS builder
 WORKDIR /repo
-COPY --from=deps /repo/ ./
 ARG CACHEBUST=1
 RUN echo "cache bust: $CACHEBUST"
 COPY . .

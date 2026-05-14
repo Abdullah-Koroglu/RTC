@@ -62,7 +62,7 @@ if (-not $registryExists) {
 }
 
 Info 'Step 3/10: Create k3d cluster with required ports and Traefik disabled.'
-Run "k3d cluster create $ClusterName --registry-use k3d-${RegistryName}:$RegistryPort --port 80:80@loadbalancer --port 443:443@loadbalancer --k3s-arg '--disable=traefik@server:0' --wait"
+Run "k3d cluster create $ClusterName --registry-use k3d-${RegistryName}:$RegistryPort --port 80:80@loadbalancer --port 443:443@loadbalancer --port 3478:3478@loadbalancer --port 49160-49170:49160-49170/udp@loadbalancer --port 49160-49170:49160-49170/tcp@loadbalancer --port 40000-40020:40000-40020/udp@server:0 --port 40000-40020:40000-40020/tcp@server:0 --k3s-arg '--disable=traefik@server:0' --wait"
 Run "kubectl config use-context k3d-$ClusterName"
 Fix-KubeconfigServer "k3d-$ClusterName"
 Done 'Cluster created and context selected.'

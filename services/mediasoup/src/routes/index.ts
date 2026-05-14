@@ -8,6 +8,13 @@ const roomPeerParams = z.object({
 });
 
 export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
+  app.get('/rooms/:roomId/producers', async (request) => {
+    const params = z.object({ roomId: z.string().min(1) }).parse(request.params);
+    return {
+      producers: ctx.roomManager.listRoomProducers(params.roomId),
+    };
+  });
+
   app.post('/rooms/:roomId/peers/:peerId/join', async (request) => {
     const params = roomPeerParams.parse(request.params);
     return ctx.roomManager.joinRoom(params.roomId, params.peerId);

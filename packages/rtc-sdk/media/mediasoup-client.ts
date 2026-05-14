@@ -18,6 +18,7 @@ async function getMediasoupClient(): Promise<any> {
 
 export interface MediasoupClientOptions {
   baseUrl: string;
+  apiBaseUrl: string;
   roomId: string;
   peerId: string;
 }
@@ -38,6 +39,13 @@ interface RemoteProducerListResponse {
   producers: RemoteProducer[];
 }
 
+interface TurnCredentialsResponse {
+  urls: string[];
+  username: string;
+  credential: string;
+  ttlSeconds: number;
+}
+
 export interface RemoteConsumer {
   consumerId: string;
   producerId: string;
@@ -54,6 +62,21 @@ export class MediasoupClient {
   private consumers = new Map<string, Consumer>();
   private localStream: LocalStream | null = null;
   private mediasooupClient: any = null;
+  private unloadHandlerRegistered = false;
+  private turnCredentials: TurnCredentialsResponse | null = null;
+
+  private readonly unloadHandler = (): void => {
+    const url = `${this.options.baseUrl}/rooms/${this.options.roomId}/peers/${this.options.peerId}`;
+    void fetch(url, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      keepalive: true,
+    }).catch(() => {
+      // Best-effort cleanup on browser unload.
+    });
+  };
 
   constructor(private readonly options: MediasoupClientOptions) {}
 
@@ -72,6 +95,12 @@ export class MediasoupClient {
       await this.device.load({
         routerRtpCapabilities: joinResponse.routerRtpCapabilities,
       });
+
+      if (typeof window !== 'undefined' && !this.unloadHandlerRegistered) {
+        window.addEventListener('beforeunload', this.unloadHandler);
+        window.addEventListener('pagehide', this.unloadHandler);
+        this.unloadHandlerRegistered = true;
+      }
     } catch (error) {
       console.error('Mediasoup initialize failed', {
         roomId: this.options.roomId,
@@ -97,6 +126,13 @@ export class MediasoupClient {
       throw new Error('Device not initialized');
     }
 
+    const turnCredentials = await this.fetchTurnCredentials();
+    const iceServers = turnCredentials.urls.map((url) => ({
+      urls: url,
+      username: turnCredentials.username,
+      credential: turnCredentials.credential,
+    }));
+
     // Create send transport
     const sendTransportResponse = await this.apiCall(
       'POST',
@@ -110,6 +146,8 @@ export class MediasoupClient {
       iceCandidates: sendTransportResponse.iceCandidates,
       dtlsParameters: sendTransportResponse.dtlsParameters,
       sctpParameters: sendTransportResponse.sctpParameters,
+      iceServers,
+      iceTransportPolicy: 'all',
     });
 
     this.sendTransport.on('connect', async ({ dtlsParameters }: any, callback: any, errback: any) => {
@@ -151,6 +189,8 @@ export class MediasoupClient {
       iceCandidates: recvTransportResponse.iceCandidates,
       dtlsParameters: recvTransportResponse.dtlsParameters,
       sctpParameters: recvTransportResponse.sctpParameters,
+      iceServers,
+      iceTransportPolicy: 'all',
     });
 
     this.recvTransport.on('connect', async ({ dtlsParameters }: any, callback: any, errback: any) => {
@@ -297,10 +337,14 @@ export class MediasoupClient {
         rtpParameters: consumerResponse.rtpParameters,
       });
 
+      await consumer.resume();
+
       this.consumers.set(consumer.id, consumer);
 
       const stream = new MediaStream();
       stream.addTrack(consumer.track);
+
+      console.info('[subscribe] stream tracks:', stream.getTracks().map(t => t.kind + ':' + t.readyState));
 
       return stream;
     } catch (error) {
@@ -397,6 +441,12 @@ export class MediasoupClient {
     } catch {
       // Ignore errors on disconnect
     }
+
+    if (typeof window !== 'undefined' && this.unloadHandlerRegistered) {
+      window.removeEventListener('beforeunload', this.unloadHandler);
+      window.removeEventListener('pagehide', this.unloadHandler);
+      this.unloadHandlerRegistered = false;
+    }
   }
 
   private async createLocalMediaStream(constraints: MediaStreamConstraints): Promise<MediaStream> {
@@ -446,6 +496,24 @@ export class MediasoupClient {
     }
 
     return stream;
+  }
+
+  private async fetchTurnCredentials(): Promise<TurnCredentialsResponse> {
+    if (this.turnCredentials) {
+      return this.turnCredentials;
+    }
+
+    const url = new URL('/v1/turn/credentials', this.options.apiBaseUrl);
+    url.searchParams.set('peerId', this.options.peerId);
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      throw new Error(`TURN credentials request failed: ${response.status}`);
+    }
+
+    const credentials = (await response.json()) as TurnCredentialsResponse;
+    this.turnCredentials = credentials;
+    return credentials;
   }
 
   /**

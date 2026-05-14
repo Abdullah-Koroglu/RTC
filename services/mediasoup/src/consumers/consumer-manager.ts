@@ -43,6 +43,12 @@ export class ConsumerManager {
       consumingPeer.consumers.delete(consumer.id);
     });
 
+    await consumer.resume();
+
+    if (consumer.kind === 'video' && typeof consumer.requestKeyFrame === 'function') {
+      await consumer.requestKeyFrame();
+    }
+
     return consumer;
   }
 

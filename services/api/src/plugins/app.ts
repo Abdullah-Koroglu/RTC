@@ -5,7 +5,31 @@ import rateLimit from '@fastify/rate-limit';
 import sensible from '@fastify/sensible';
 import { env } from '@/config/env';
 
+function buildAllowedOrigins(input: string): string[] {
+  const configured = input
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const origins = new Set<string>(configured);
+  origins.add('http://app.local.rtc');
+  origins.add('https://app.local.rtc');
+
+  for (const origin of configured) {
+    if (origin.startsWith('http://')) {
+      origins.add(`https://${origin.slice('http://'.length)}`);
+    }
+    if (origin.startsWith('https://')) {
+      origins.add(`http://${origin.slice('https://'.length)}`);
+    }
+  }
+
+  return Array.from(origins);
+}
+
 export const appPlugin = fp(async (app) => {
+  const allowedOrigins = buildAllowedOrigins(env.CORS_ORIGIN);
+
   await app.register(sensible);
 
   await app.register(helmet, {
@@ -14,7 +38,7 @@ export const appPlugin = fp(async (app) => {
   });
 
   await app.register(cors, {
-    origin: env.CORS_ORIGIN.split(',').map((item) => item.trim()),
+    origin: allowedOrigins,
     credentials: true,
   });
 

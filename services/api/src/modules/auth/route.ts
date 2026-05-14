@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { loginBodySchema } from '@/modules/auth/schema';
 import { issueToken } from '@/modules/auth/service';
 
-export async function authRoutes(app: FastifyInstance): Promise<void> {
+export function authRoutes(app: FastifyInstance): void {
   app.post(
     '/auth/login',
     {
@@ -12,19 +12,41 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           type: 'object',
           properties: {
             subject: { type: 'string' },
+            peerId: { type: 'string' },
+            roomId: { type: 'string' },
             role: { type: 'string' },
           },
-          required: ['subject'],
+          anyOf: [
+            { required: ['subject'] },
+            { required: ['peerId'] },
+          ],
         },
       },
     },
-    async (request) => {
-      const payload = loginBodySchema.parse(request.body);
-      return issueToken(app, payload);
+    (request) => {
+      try {
+        const payload = loginBodySchema.parse(request.body);
+        const subject = payload.subject ?? payload.peerId;
+
+        if (!subject) {
+          throw new Error('subject or peerId is required');
+        }
+
+        return issueToken(app, { subject, role: payload.role });
+      } catch (error) {
+        request.log.error(
+          {
+            err: error,
+            body: request.body,
+          },
+          'auth_login_failed',
+        );
+        throw error;
+      }
     },
   );
 
-  app.get('/auth/me', { preHandler: [app.authenticate] }, async (request) => {
+  app.get('/auth/me', { preHandler: [app.authenticate] }, (request) => {
     return { user: request.user };
   });
 }

@@ -28,43 +28,87 @@ spec:
       protocol: UDP
       port: 49160
       targetPort: 49160
+    - name: relay-49160-tcp
+      protocol: TCP
+      port: 49160
+      targetPort: 49160
     - name: relay-49161
       protocol: UDP
+      port: 49161
+      targetPort: 49161
+    - name: relay-49161-tcp
+      protocol: TCP
       port: 49161
       targetPort: 49161
     - name: relay-49162
       protocol: UDP
       port: 49162
       targetPort: 49162
+    - name: relay-49162-tcp
+      protocol: TCP
+      port: 49162
+      targetPort: 49162
     - name: relay-49163
       protocol: UDP
+      port: 49163
+      targetPort: 49163
+    - name: relay-49163-tcp
+      protocol: TCP
       port: 49163
       targetPort: 49163
     - name: relay-49164
       protocol: UDP
       port: 49164
       targetPort: 49164
+    - name: relay-49164-tcp
+      protocol: TCP
+      port: 49164
+      targetPort: 49164
     - name: relay-49165
       protocol: UDP
+      port: 49165
+      targetPort: 49165
+    - name: relay-49165-tcp
+      protocol: TCP
       port: 49165
       targetPort: 49165
     - name: relay-49166
       protocol: UDP
       port: 49166
       targetPort: 49166
+    - name: relay-49166-tcp
+      protocol: TCP
+      port: 49166
+      targetPort: 49166
     - name: relay-49167
       protocol: UDP
+      port: 49167
+      targetPort: 49167
+    - name: relay-49167-tcp
+      protocol: TCP
       port: 49167
       targetPort: 49167
     - name: relay-49168
       protocol: UDP
       port: 49168
       targetPort: 49168
+    - name: relay-49168-tcp
+      protocol: TCP
+      port: 49168
+      targetPort: 49168
     - name: relay-49169
       protocol: UDP
       port: 49169
       targetPort: 49169
+    - name: relay-49169-tcp
+      protocol: TCP
+      port: 49169
+      targetPort: 49169
     - name: relay-49170
       protocol: UDP
+      port: 49170
+      targetPort: 49170
+    - name: relay-49170-tcp
+      protocol: TCP
       port: 49170
       targetPort: 49170

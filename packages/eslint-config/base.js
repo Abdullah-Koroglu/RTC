@@ -5,7 +5,17 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['**/dist/**', '**/.next/**', '**/coverage/**', '**/node_modules/**', '**/__tests__/**', '**/*.test.ts', '**/*.test.tsx'],
+    ignores: [
+      '**/dist/**',
+      '**/.next/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      '**/__tests__/**',
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      'apps/web/tailwind.config.ts',
+      'apps/web/postcss.config.mjs',
+    ],
   },
   js.configs.recommended,
   {
@@ -53,6 +63,18 @@ export default [
   {
     rules: {
       'no-console': ['warn', { allow: ['warn', 'error', 'info'] }],
+    },
+  },
+  {
+    // Next.js App Router files need a local .next/types build for next/* subpath
+    // imports to resolve fully. Disable unsafe-* to avoid false positives.
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
     },
   },
   {

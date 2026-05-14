@@ -3,7 +3,7 @@ import { ZodError } from 'zod';
 import { formatZodError } from '@/utils/zod';
 import { AppError } from '@/utils/errors';
 
-export const errorHandlerPlugin = fp(async (app) => {
+export const errorHandlerPlugin = fp((app) => {
   app.setErrorHandler((error, request, reply) => {
     request.log.error(
       {
@@ -31,7 +31,15 @@ export const errorHandlerPlugin = fp(async (app) => {
     if ('validation' in error && Array.isArray((error as { validation?: unknown }).validation)) {
       return reply.status(400).send({
         code: 'REQUEST_VALIDATION_ERROR',
-        message: error.message,
+        message: error instanceof Error ? error.message : 'Request validation failed',
+      });
+    }
+
+    const errorCode = (error as { code?: unknown }).code;
+    if (typeof errorCode === 'string' && errorCode === 'FST_ERR_CTP_INVALID_JSON_BODY') {
+      return reply.status(400).send({
+        code: 'INVALID_JSON_BODY',
+        message: 'Request body must be valid JSON',
       });
     }
 
