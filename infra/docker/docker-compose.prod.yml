@@ -27,26 +27,30 @@ services:
       - ALL
     environment:
       NODE_ENV: production
-      LOG_LEVEL: ${LOG_LEVEL}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       HOST: 0.0.0.0
       PORT: 4020
-      MEDIASOUP_WORKER_COUNT: ${MEDIASOUP_WORKER_COUNT}
-      MEDIASOUP_WORKER_RTC_MIN_PORT: ${MEDIASOUP_WORKER_RTC_MIN_PORT}
-      MEDIASOUP_WORKER_RTC_MAX_PORT: ${MEDIASOUP_WORKER_RTC_MAX_PORT}
-      MEDIASOUP_LISTEN_IP: ${MEDIASOUP_LISTEN_IP}
+      MEDIASOUP_WORKER_COUNT: ${MEDIASOUP_WORKER_COUNT:-2}
+      MEDIASOUP_WORKER_RTC_MIN_PORT: ${MEDIASOUP_WORKER_RTC_MIN_PORT:-40000}
+      MEDIASOUP_WORKER_RTC_MAX_PORT: ${MEDIASOUP_WORKER_RTC_MAX_PORT:-40500}
+      MEDIASOUP_LISTEN_IP: 0.0.0.0
       MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP}
-      MEDIASOUP_ENABLE_UDP: ${MEDIASOUP_ENABLE_UDP}
-      MEDIASOUP_ENABLE_TCP: ${MEDIASOUP_ENABLE_TCP}
-      MEDIASOUP_PREFER_UDP: ${MEDIASOUP_PREFER_UDP}
-      MEDIASOUP_INITIAL_AVAILABLE_OUTGOING_BITRATE: ${MEDIASOUP_INITIAL_AVAILABLE_OUTGOING_BITRATE}
-      MEDIASOUP_MAX_INCOMING_BITRATE: ${MEDIASOUP_MAX_INCOMING_BITRATE}
-      MEDIASOUP_LOG_TAGS: ${MEDIASOUP_LOG_TAGS}
-      MEDIASOUP_CODECS_JSON: ${MEDIASOUP_CODECS_JSON}
+      MEDIASOUP_ENABLE_UDP: 'true'
+      MEDIASOUP_ENABLE_TCP: 'true'
+      MEDIASOUP_PREFER_UDP: 'true'
+      MEDIASOUP_INITIAL_AVAILABLE_OUTGOING_BITRATE: 1000000
+      MEDIASOUP_MAX_INCOMING_BITRATE: 1500000
+      MEDIASOUP_LOG_TAGS: ice,dtls,rtp,rtcp
     ports:
-      - '4020:4020'
-      - '${MEDIASOUP_WORKER_RTC_MIN_PORT}-${MEDIASOUP_WORKER_RTC_MAX_PORT}:${MEDIASOUP_WORKER_RTC_MIN_PORT}-${MEDIASOUP_WORKER_RTC_MAX_PORT}/udp'
+      - '127.0.0.1:4020:4020' # HTTP API — Nginx only
+      - '40000-40500:40000-40500/udp' # RTP/DTLS media — direct
+      - '40000-40500:40000-40500/tcp'
     healthcheck:
-      test: ['CMD-SHELL', 'node -e "fetch(\"http://127.0.0.1:4020/health\").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"']
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://127.0.0.1:4020/health\").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"',
+        ]
       interval: 20s
       timeout: 4s
       retries: 5
@@ -155,8 +159,13 @@ services:
       PORT: 4000
       HOST: 0.0.0.0
       REDIS_URL: redis://redis:6379
-      CORS_ORIGIN: ${CORS_ORIGIN}
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: https://link.akoroglu.com.tr
+      TURN_REALM: link.akoroglu.com.tr
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - '127.0.0.1:4000:4000'
     depends_on:
       redis:
         condition: service_healthy
@@ -184,7 +193,10 @@ services:
       PORT: 4010
       HOST: 0.0.0.0
       REDIS_URL: redis://redis:6379
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGINS: https://link.akoroglu.com.tr
+    ports:
+      - '127.0.0.1:4010:4010'
     depends_on:
       redis:
         condition: service_healthy
@@ -197,6 +209,12 @@ services:
     build:
       context: ../../
       dockerfile: apps/web/Dockerfile
+      # NEXT_PUBLIC_* vars are baked into the JS bundle at build time.
+      # They MUST be passed as build args, not just environment vars.
+      args:
+        NEXT_PUBLIC_API_URL: https://api.link.akoroglu.com.tr
+        NEXT_PUBLIC_SIGNALING_URL: wss://signal.link.akoroglu.com.tr/ws
+        NEXT_PUBLIC_MEDIASOUP_URL: https://media.link.akoroglu.com.tr
     image: rtc-web:prod
     container_name: rtc-web-prod
     restart: always
@@ -209,10 +227,8 @@ services:
       - ALL
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
-      NEXT_PUBLIC_SIGNALING_URL: ${NEXT_PUBLIC_SIGNALING_URL}
     ports:
-      - '${WEB_PORT:-3000}:3000'
+      - '127.0.0.1:3000:3000'
     depends_on:
       api:
         condition: service_started
