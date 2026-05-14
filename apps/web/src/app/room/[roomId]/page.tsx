@@ -13,6 +13,22 @@ import { generateUUID } from '@/lib/uuid';
 const SS_DISPLAY_NAME = 'rtc:displayName';
 const SS_PEER_ID = 'rtc:peerId';
 
+// Tailwind purge-safe column class map
+const GRID_COLS: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+};
+
+function getGridCols(count: number): number {
+  if (count <= 1) return 1;
+  if (count <= 2) return 2;
+  if (count <= 4) return 2;
+  if (count <= 9) return 3;
+  return 4;
+}
+
 function getPeerId(): string {
   const stored = sessionStorage.getItem(SS_PEER_ID);
   if (stored) return stored;
@@ -85,6 +101,15 @@ export default function RoomPage() {
 
   const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
 
+  const tileCount =
+    (localStream ? 1 : 0) +
+    (screenStream ? 1 : 0) +
+    remoteEntries.length +
+    (remoteEntries.length === 0 && !localStream ? 0 : 0); // empty state tile handled separately
+
+  const gridCols = isChatOpen ? Math.min(getGridCols(tileCount), 2) : getGridCols(tileCount);
+  const gridRows = tileCount > 0 ? Math.ceil(tileCount / gridCols) : 1;
+
   const handleNameConfirm = (name: string) => {
     sessionStorage.setItem(SS_DISPLAY_NAME, name);
     setDisplayName(name);
@@ -155,8 +180,8 @@ export default function RoomPage() {
       {/* Device selection modal — shown once after room join */}
       {deviceModalOpen && <DeviceSelectModal onConfirm={handleDeviceConfirm} />}
 
-      <main className="flex min-h-screen flex-col bg-slate-950 px-4 py-4 md:px-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4">
+      <main className="flex h-screen flex-col bg-slate-950 px-4 py-4 md:px-6">
+        <div className="mx-auto flex w-full max-w-7xl flex-1 min-h-0 flex-col gap-4">
 
           {/* Header */}
           <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-3 backdrop-blur">
@@ -191,8 +216,11 @@ export default function RoomPage() {
           )}
 
           {/* Main */}
-          <div className={`flex flex-1 gap-3 ${isChatOpen ? 'flex-col md:flex-row' : ''}`}>
-            <section className={`grid auto-rows-fr gap-3 ${isChatOpen ? 'flex-1 grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3'}`}>
+          <div className={`flex min-h-0 flex-1 gap-3 ${isChatOpen ? 'flex-col md:flex-row' : ''}`}>
+            <section
+              className={`min-h-0 flex-1 grid gap-3 ${GRID_COLS[gridCols] ?? 'grid-cols-2'}`}
+              style={{ gridTemplateRows: `repeat(${gridRows}, 1fr)` }}
+            >
               {localStream && <VideoTile stream={localStream} label={`${displayName} (Sen)`} muted mirrored />}
               {screenStream && <VideoTile stream={screenStream} label={`${displayName} (Ekranın)`} muted />}
               {remoteEntries.map(([key, stream]) => {
@@ -200,11 +228,17 @@ export default function RoomPage() {
                 const label = isScreen ? `${key.replace(':screen', '')} (Ekran)` : key;
                 return <VideoTile key={key} stream={stream} label={label} />;
               })}
-              {roomState === 'joined' && remoteEntries.length === 0 && (
-                <div className="flex aspect-video flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-8 text-center">
+              {roomState === 'joined' && remoteEntries.length === 0 && !localStream && (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-8 text-center">
                   <Users size={32} className="mb-3 text-slate-600" />
                   <p className="text-sm font-medium text-slate-400">Katılımcı bekleniyor…</p>
                   <p className="mt-1 text-xs text-slate-600">Oda ID&apos;sini paylaşarak davet et</p>
+                </div>
+              )}
+              {roomState === 'joined' && remoteEntries.length === 0 && localStream && (
+                <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/30 p-4 text-center">
+                  <Users size={20} className="mb-2 text-slate-600" />
+                  <p className="text-xs text-slate-500">Bekleniyor…</p>
                 </div>
               )}
             </section>

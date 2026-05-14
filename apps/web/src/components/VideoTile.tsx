@@ -67,7 +67,7 @@ export function VideoTile({ stream, label, muted = false, mirrored = false }: Vi
         autoPlay
         playsInline
         muted={muted}
-        className="block aspect-video w-full bg-slate-950"
+        className="h-full w-full bg-slate-950"
         style={{ objectFit: 'cover', transform: mirrored ? 'scaleX(-1)' : undefined }}
       />
 
