@@ -75,11 +75,12 @@ export class RoomManager {
     }
 
     const peer = this.peers.getOrCreate(input.roomId, input.peerId);
-    const transport = await this.transports.createWebRtcTransport(roomRouter.router, peer, {
-      peerId: input.peerId,
-      roomId: input.roomId,
-      ...input.appData,
-    });
+    const transport = await this.transports.createWebRtcTransport(
+      roomRouter.router,
+      peer,
+      { peerId: input.peerId, roomId: input.roomId, ...input.appData },
+      () => this.disconnectPeer(input.roomId, input.peerId),
+    );
 
     return {
       transportId: transport.id,

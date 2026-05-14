@@ -4,7 +4,12 @@ import type { Peer } from '@/peers/peer';
 import type { Router, TransportConnectInput, WebRtcTransport } from '@/types/mediasoup';
 
 export class TransportManager {
-  async createWebRtcTransport(router: Router, peer: Peer, appData: Record<string, unknown> = {}): Promise<WebRtcTransport> {
+  async createWebRtcTransport(
+    router: Router,
+    peer: Peer,
+    appData: Record<string, unknown> = {},
+    onPeerGone?: () => void,
+  ): Promise<WebRtcTransport> {
     const listenInfos: Array<{ ip: string; announcedAddress?: string; protocol: 'udp' | 'tcp' }> = [];
 
     if (env.MEDIASOUP_ENABLE_UDP) {
@@ -42,6 +47,29 @@ export class TransportManager {
 
     peer.transports.set(transport.id, transport);
 
+    // Auto-cleanup: if ICE disconnects and doesn't recover, remove the peer
+    // so stale producers don't appear to other participants after a refresh.
+    let iceTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const cancelIceTimeout = () => {
+      if (iceTimeoutId !== null) {
+        clearTimeout(iceTimeoutId);
+        iceTimeoutId = null;
+      }
+    };
+
+    const triggerPeerGone = () => {
+      cancelIceTimeout();
+      if (!transport.closed) {
+        logger.warn({
+          transportId: transport.id,
+          peerId: peer.id,
+          roomId: (transport.appData as Record<string, unknown>).roomId,
+        }, 'transport_ice_peer_gone');
+        onPeerGone?.();
+      }
+    };
+
     transport.on('icestatechange', (state) => {
       logger.info({
         transportId: transport.id,
@@ -50,6 +78,16 @@ export class TransportManager {
         type: (transport.appData as Record<string, unknown>).type,
         state,
       }, 'transport_ice_state_changed');
+
+      if (state === 'disconnected') {
+        // Give 20 s for mobile network switches / brief outages before cleaning up
+        iceTimeoutId = setTimeout(triggerPeerGone, 20_000);
+      } else if (state === 'connected' || state === 'completed') {
+        cancelIceTimeout();
+      } else if (state === 'failed') {
+        // ICE has definitively given up — clean up immediately
+        triggerPeerGone();
+      }
     });
 
     transport.on('dtlsstatechange', (state) => {
@@ -63,6 +101,7 @@ export class TransportManager {
     });
 
     transport.observer.on('close', () => {
+      cancelIceTimeout();
       peer.transports.delete(transport.id);
     });
 
