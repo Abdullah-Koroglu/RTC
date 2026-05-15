@@ -70,7 +70,7 @@ export default function ProfilePage() {
 
       {/* Back */}
       <button
-        onClick={() => router.push('/')}
+        onClick={() => router.back()}
         className="absolute left-5 top-5 flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition"
         style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', color: 'rgba(255,255,255,0.65)', cursor: 'pointer', fontFamily: 'inherit' }}
         onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.1)')}

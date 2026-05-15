@@ -116,16 +116,17 @@ function CtrlBtn({ onClick, icon, label, danger, forceRed, lit, badge }: { onCli
 }
 
 /* ── Control bar ── */
-function ControlBar({ micOn, camOn, screenShare, chatOpen, unread, onMic, onCam, onScreen, onChat, onLeave, isMobile }: { micOn: boolean; camOn: boolean; screenShare: boolean; chatOpen: boolean; unread: number; onMic: () => void; onCam: () => void; onScreen: () => void; onChat: () => void; onLeave: () => void; isMobile: boolean }) {
+function ControlBar({ micOn, camOn, screenShare, chatOpen, breakoutOpen, unread, onMic, onCam, onScreen, onChat, onBreakout, onLeave, isMobile }: { micOn: boolean; camOn: boolean; screenShare: boolean; chatOpen: boolean; breakoutOpen: boolean; unread: number; onMic: () => void; onCam: () => void; onScreen: () => void; onChat: () => void; onBreakout: () => void; onLeave: () => void; isMobile: boolean }) {
   const L = (s: string) => isMobile ? undefined : s;
   return (
     <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: isMobile ? 72 : 82, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: 'rgba(10,12,18,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.06)', zIndex: 100, padding: '0 20px' }}>
-      <CtrlBtn onClick={onMic}    icon={micOn ? <IcMic s={20} /> : <IcMicOff s={20} />}    label={L(micOn ? 'Mute' : 'Unmute')}         danger={!micOn} />
-      <CtrlBtn onClick={onCam}    icon={camOn ? <IcVideo s={20} /> : <IcVideoOff s={20} />} label={L(camOn ? 'Stop Video' : 'Start Video')} danger={!camOn} />
-      <CtrlBtn onClick={onScreen} icon={<IcMonitor s={20} />}                                label={L('Share')}   lit={screenShare} />
-      <CtrlBtn onClick={onChat}   icon={<IcChat s={20} />}                                   label={L('Chat')}    lit={chatOpen} badge={unread} />
+      <CtrlBtn onClick={onMic}      icon={micOn ? <IcMic s={20} /> : <IcMicOff s={20} />}    label={L(micOn ? 'Mute' : 'Unmute')}         danger={!micOn} />
+      <CtrlBtn onClick={onCam}      icon={camOn ? <IcVideo s={20} /> : <IcVideoOff s={20} />} label={L(camOn ? 'Stop Video' : 'Start Video')} danger={!camOn} />
+      <CtrlBtn onClick={onScreen}   icon={<IcMonitor s={20} />}                                label={L('Share')}    lit={screenShare} />
+      <CtrlBtn onClick={onChat}     icon={<IcChat s={20} />}                                   label={L('Chat')}     lit={chatOpen} badge={unread} />
+      <CtrlBtn onClick={onBreakout} icon={<IcGrid s={20} />}                                   label={L('Rooms')}    lit={breakoutOpen} />
       <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)', margin: '0 4px' }} />
-      <CtrlBtn onClick={onLeave}  icon={<IcPhone s={20} />} label={L('Leave')} forceRed />
+      <CtrlBtn onClick={onLeave}    icon={<IcPhone s={20} />} label={L('Leave')} forceRed />
     </div>
   );
 }
@@ -164,7 +165,8 @@ function WaitingRoom({ roomId }: { roomId: string }) {
 }
 
 /* ── Screen share view ── */
-function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, isVideoEnabled }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean }) {
+function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, peerNames }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string> }) {
+  const resolve = (key: string) => peerNames.get(key) ?? key;
   return (
     <div style={{ flex: 1, display: 'flex', gap: 8, padding: '10px', minHeight: 0 }}>
       {/* Main screen */}
@@ -181,7 +183,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
         )}
         {remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => (
           <div key={key} style={{ aspectRatio: '16/9', flexShrink: 0, borderRadius: 10, overflow: 'hidden' }}>
-            <VideoTile stream={stream} label={key} />
+            <VideoTile stream={stream} label={resolve(key)} />
           </div>
         ))}
       </div>
@@ -190,13 +192,15 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
 }
 
 /* ── Video grid ── */
-function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, isVideoEnabled }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean }) {
+function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, peerNames }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string> }) {
+  const resolve = (key: string) => peerNames.get(key) ?? key;
   const tiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored?: boolean; isMicMuted?: boolean }> = [];
   if (localStream) tiles.push({ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled });
   if (screenStream) tiles.push({ key: '__screen', stream: screenStream, label: `${displayName} (Screen)`, muted: true });
   for (const [key, stream] of remoteEntries) {
     const isScreen = key.endsWith(':screen');
-    tiles.push({ key, stream, label: isScreen ? `${key.replace(':screen', '')} (Screen)` : key, muted: false });
+    const basePeer = isScreen ? key.replace(':screen', '') : key;
+    tiles.push({ key, stream, label: isScreen ? `${resolve(basePeer)} (Screen)` : resolve(key), muted: false });
   }
   const count = tiles.length;
   if (count === 0) return null;
@@ -299,6 +303,164 @@ function ShortcutsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ── Breakout rooms panel ── */
+const IcArrowLeft = ({ s = 14, c = 'currentColor' }: { s?: number; c?: string }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+  </svg>
+);
+const IcPlus = ({ s = 14, c = 'currentColor' }: { s?: number; c?: string }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+  </svg>
+);
+const IcGrid = ({ s = 20, c = 'currentColor' }: { s?: number; c?: string }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+  </svg>
+);
+
+function getMainRoomId(roomId: string): string {
+  const idx = roomId.indexOf('--br-');
+  return idx >= 0 ? roomId.slice(0, idx) : roomId;
+}
+
+function getBreakoutRooms(mainRoomId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    return JSON.parse(sessionStorage.getItem(`rtc:breakouts:${mainRoomId}`) ?? '[]') as string[];
+  } catch { return []; }
+}
+
+function saveBreakoutRooms(mainRoomId: string, rooms: string[]): void {
+  sessionStorage.setItem(`rtc:breakouts:${mainRoomId}`, JSON.stringify(rooms));
+}
+
+interface BreakoutPanelProps {
+  open: boolean;
+  onClose: () => void;
+  currentRoomId: string;
+  onJoin: (roomId: string) => void;
+}
+
+function BreakoutPanel({ open, onClose, currentRoomId, onJoin }: BreakoutPanelProps) {
+  const mainRoomId = getMainRoomId(currentRoomId);
+  const isInBreakout = currentRoomId !== mainRoomId;
+
+  const [breakouts, setBreakouts] = useState<string[]>(() => getBreakoutRooms(mainRoomId));
+
+  const createBreakout = () => {
+    const n = breakouts.length + 1;
+    const newId = `${mainRoomId}--br-${n}`;
+    const updated = [...breakouts, newId];
+    setBreakouts(updated);
+    saveBreakoutRooms(mainRoomId, updated);
+  };
+
+  const COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B'];
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, right: 0, bottom: 0, width: 300,
+      background: 'rgba(11,13,20,0.95)', backdropFilter: 'blur(28px)',
+      borderLeft: '1px solid rgba(255,255,255,0.07)',
+      display: 'flex', flexDirection: 'column', zIndex: 200,
+      transform: open ? 'translateX(0)' : 'translateX(100%)',
+      transition: 'transform 0.26s cubic-bezier(0.4,0,0.2,1)',
+      fontFamily: 'Inter, sans-serif',
+    }}>
+      {/* Header */}
+      <div style={{ padding: '18px 18px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <IcGrid s={16} c="#3B82F6" />
+          <span style={{ color: 'white', fontSize: 14, fontWeight: 600 }}>Breakout Rooms</span>
+        </div>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.55)', transition: 'background 0.15s' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}>
+          <IcX />
+        </button>
+      </div>
+
+      {/* Return to main room */}
+      {isInBreakout && (
+        <button onClick={() => onJoin(mainRoomId)}
+          style={{ margin: '12px 14px 0', padding: '10px 14px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', transition: 'background 0.15s', flexShrink: 0 }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(59,130,246,0.18)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(59,130,246,0.1)')}>
+          <IcArrowLeft s={14} c="#3B82F6" />
+          <span style={{ color: '#3B82F6', fontSize: 13, fontWeight: 500 }}>Return to main room</span>
+        </button>
+      )}
+
+      {/* Main room entry (always visible) */}
+      <div style={{ padding: '12px 14px 4px', flexShrink: 0 }}>
+        <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Main Room</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: currentRoomId === mainRoomId ? 'rgba(59,130,246,0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${currentRoomId === mainRoomId ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 10, padding: '10px 12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: currentRoomId === mainRoomId ? '#22C55E' : 'rgba(255,255,255,0.2)', flexShrink: 0 }} />
+            <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 500 }}>Main Room</span>
+          </div>
+          {currentRoomId !== mainRoomId && (
+            <button onClick={() => onJoin(mainRoomId)}
+              style={{ padding: '5px 12px', background: '#3B82F6', border: 'none', borderRadius: 7, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'background 0.15s' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#2563EB')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#3B82F6')}>
+              Join
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Breakout list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px' }}>
+        {breakouts.length > 0 && (
+          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Breakout Rooms</div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {breakouts.map((bId, idx) => {
+            const isCurrent = currentRoomId === bId;
+            const color = COLORS[idx % COLORS.length]!;
+            return (
+              <div key={bId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: isCurrent ? `${color}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${isCurrent ? `${color}40` : 'rgba(255,255,255,0.07)'}`, borderRadius: 10, padding: '10px 12px', transition: 'background 0.15s' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: `${color}22`, border: `1px solid ${color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color, flexShrink: 0 }}>
+                    {idx + 1}
+                  </div>
+                  <div>
+                    <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: 500 }}>Breakout {idx + 1}</div>
+                    {isCurrent && <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10, marginTop: 1 }}>You are here</div>}
+                  </div>
+                </div>
+                {!isCurrent && (
+                  <button onClick={() => onJoin(bId)}
+                    style={{ padding: '5px 12px', background: color, border: 'none', borderRadius: 7, color: 'white', fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'opacity 0.15s' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}>
+                    Join
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Create breakout */}
+      <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+        <button onClick={createBreakout}
+          style={{ width: '100%', padding: '10px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, cursor: 'pointer', color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: 500, transition: 'background 0.15s', fontFamily: 'Inter, sans-serif' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.1)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}>
+          <IcPlus s={14} c="rgba(255,255,255,0.7)" />
+          Create breakout room
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ── Toast ── */
 interface ToastItem { id: number; message: string; ini: string; color: string }
 function ToastStack({ toasts }: { toasts: ToastItem[] }) {
@@ -332,6 +494,7 @@ export default function RoomPage() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [breakoutOpen, setBreakoutOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [screenShareToast, setScreenShareToast] = useState('');
 
@@ -348,6 +511,7 @@ export default function RoomPage() {
     chatMessages,
     screenStream,
     isScreenSharing,
+    peerNames,
     leaveRoom,
     publishMedia,
     setAudioEnabled,
@@ -356,6 +520,12 @@ export default function RoomPage() {
     stopScreenShare,
     sendChatMessage,
   } = useRoom({ roomId, peerId, displayName, autoJoin: readyToJoin });
+
+  // Helper: resolve display name from stream key
+  const resolveLabel = (key: string, suffix?: string): string => {
+    const base = peerNames.get(key) ?? key;
+    return suffix ? `${base} (${suffix})` : base;
+  };
 
   // Redirect to join lobby if no displayName
   useEffect(() => {
@@ -462,6 +632,12 @@ export default function RoomPage() {
     try { await leaveRoom(); } finally { router.push('/'); }
   };
 
+  const onJoinBreakout = async (targetRoomId: string) => {
+    setBreakoutOpen(false);
+    try { await leaveRoom(); } catch { /* ignore */ }
+    router.push(`/room/${encodeURIComponent(targetRoomId)}`);
+  };
+
   // Keyboard shortcuts
   useEffect(() => {
     const fn = (e: KeyboardEvent) => {
@@ -480,6 +656,7 @@ export default function RoomPage() {
 
   const userPhoto = session?.user?.image;
   const chatW = isChatOpen ? 320 : 0;
+  const breakoutW = breakoutOpen && !isChatOpen ? 300 : 0;
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#0a0c14', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
@@ -495,7 +672,7 @@ export default function RoomPage() {
       />
 
       {/* Main content area */}
-      <div style={{ flex: 1, display: 'flex', paddingTop: 56, paddingBottom: 82, transition: 'padding-right 0.26s cubic-bezier(0.4,0,0.2,1)', paddingRight: chatW, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', paddingTop: 56, paddingBottom: 82, transition: 'padding-right 0.26s cubic-bezier(0.4,0,0.2,1)', paddingRight: chatW || breakoutW, minHeight: 0, overflow: 'hidden' }}>
         {roomState === 'joining' && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ display: 'flex', gap: 6 }}>
@@ -521,11 +698,11 @@ export default function RoomPage() {
         )}
 
         {roomState === 'joined' && !isWaiting && isScreenSharing && screenStream && (
-          <ScreenShareView screenStream={screenStream} localStream={localStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} />
+          <ScreenShareView screenStream={screenStream} localStream={localStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} />
         )}
 
         {roomState === 'joined' && !isWaiting && !(isScreenSharing && screenStream) && (
-          <VideoGrid localStream={localStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} />
+          <VideoGrid localStream={localStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} />
         )}
 
         {roomState === 'error' && (
@@ -542,11 +719,13 @@ export default function RoomPage() {
         camOn={isVideoEnabled}
         screenShare={isScreenSharing}
         chatOpen={isChatOpen}
+        breakoutOpen={breakoutOpen}
         unread={unreadCount}
         onMic={onToggleAudio}
         onCam={onToggleVideo}
         onScreen={() => void onToggleScreen()}
-        onChat={() => { setIsChatOpen((v) => { if (!v) setUnreadCount(0); return !v; }); }}
+        onChat={() => { setIsChatOpen((v) => { if (!v) { setUnreadCount(0); setBreakoutOpen(false); } return !v; }); }}
+        onBreakout={() => { setBreakoutOpen((v) => { if (!v) setIsChatOpen(false); return !v; }); }}
         onLeave={() => void onLeave()}
         isMobile={false}
       />
@@ -556,6 +735,13 @@ export default function RoomPage() {
         messages={chatMessages}
         onClose={() => setIsChatOpen(false)}
         onSend={sendChatMessage}
+      />
+
+      <BreakoutPanel
+        open={breakoutOpen}
+        onClose={() => setBreakoutOpen(false)}
+        currentRoomId={roomId}
+        onJoin={(targetId) => void onJoinBreakout(targetId)}
       />
 
       <ToastStack toasts={toasts} />

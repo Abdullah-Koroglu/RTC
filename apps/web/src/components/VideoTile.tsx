@@ -36,14 +36,6 @@ const IcMicOff = ({ s = 10, c = 'white' }: { s?: number; c?: string }) => (
   </svg>
 );
 
-const IcVideoOff = ({ s = 11, c = 'white' }: { s?: number; c?: string }) => (
-  <svg width={s} height={s} viewBox="0 0 24 24" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.66 6H14a2 2 0 0 1 2 2v2.34l1 1L22 8v8"/>
-    <path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2l10 10z"/>
-    <line x1="2" y1="2" x2="22" y2="22"/>
-  </svg>
-);
-
 const IcMaximize = ({ s = 13, c = 'currentColor' }: { s?: number; c?: string }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
     <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
@@ -54,7 +46,8 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isSp
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [hasVideo, setHasVideo] = useState(false);
+  const [videoActive, setVideoActive] = useState(false);
+
   const tileColor = color ?? colorFromLabel(label);
   const initials = getInitials(label);
 
@@ -65,22 +58,30 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isSp
     video.muted = muted;
 
     const play = () => void video.play().catch(() => undefined);
-    const checkVideo = () => setHasVideo(video.videoWidth > 0);
+    const onActive = () => setVideoActive(true);
 
-    const onTrackAdded = () => { video.srcObject = null; video.srcObject = stream; play(); };
+    const onTrackAdded = () => {
+      video.srcObject = null;
+      video.srcObject = stream;
+      play();
+    };
 
+    // Mark video as active once it starts playing — any event that fires on real data
+    video.addEventListener('playing', onActive);
+    video.addEventListener('canplay', onActive);
     stream.addEventListener('addtrack', onTrackAdded);
-    video.addEventListener('resize', checkVideo);
-    video.addEventListener('loadeddata', checkVideo);
     play();
 
     return () => {
       stream.removeEventListener('addtrack', onTrackAdded);
-      video.removeEventListener('resize', checkVideo);
-      video.removeEventListener('loadeddata', checkVideo);
+      video.removeEventListener('playing', onActive);
+      video.removeEventListener('canplay', onActive);
       video.srcObject = null;
     };
   }, [stream, muted]);
+
+  // Reset videoActive when stream changes so avatar shows briefly again
+  useEffect(() => { setVideoActive(false); }, [stream]);
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -88,17 +89,14 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isSp
     return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
+  const hasVideoTracks = stream.getVideoTracks().length > 0;
+
   const enterFullscreen = () => {
     const el = articleRef.current;
     if (!el) return;
-    if (isFullscreen) {
-      void document.exitFullscreen().catch(() => undefined);
-    } else {
-      void el.requestFullscreen().catch(() => undefined);
-    }
+    if (isFullscreen) void document.exitFullscreen().catch(() => undefined);
+    else void el.requestFullscreen().catch(() => undefined);
   };
-
-  const videoOff = !hasVideo;
 
   return (
     <article
@@ -119,24 +117,33 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isSp
         minHeight: 0,
       }}
     >
-      {/* Background with avatar (shown when no video) */}
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: videoOff ? '#0c0e14' : `radial-gradient(ellipse 90% 80% at 50% 25%, ${tileColor}14, #090b12)` }}>
-        <div style={{ width: 72, height: 72, borderRadius: '50%', background: videoOff ? 'rgba(255,255,255,0.05)' : `linear-gradient(140deg,${tileColor}ee,${tileColor}77)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, color: videoOff ? 'rgba(255,255,255,0.18)' : 'white', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.02em', flexShrink: 0, boxShadow: !videoOff ? `0 0 30px ${tileColor}33` : undefined }}>
+      {/* Avatar background — always rendered, video overlays it */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `radial-gradient(ellipse 90% 80% at 50% 25%, ${tileColor}14, #090b12)` }}>
+        <div style={{ width: 72, height: 72, borderRadius: '50%', background: `linear-gradient(140deg,${tileColor}ee,${tileColor}77)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, color: 'white', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.02em', flexShrink: 0, boxShadow: `0 0 30px ${tileColor}33` }}>
           {initials}
         </div>
       </div>
 
-      {/* Actual video */}
+      {/* Actual video — shown on top of avatar once playing */}
       <video
         ref={videoRef}
         autoPlay
         playsInline
         muted={muted}
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: mirrored ? 'scaleX(-1)' : undefined, opacity: hasVideo ? 1 : 0, transition: 'opacity 0.3s' }}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transform: mirrored ? 'scaleX(-1)' : undefined,
+          // Only hide video if stream has no video tracks at all (audio-only)
+          display: hasVideoTracks ? 'block' : 'none',
+        }}
       />
 
       {/* Name label bottom-left */}
-      <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', alignItems: 'center', gap: 5, zIndex: 1 }}>
         <span style={{ background: 'rgba(0,0,0,0.58)', backdropFilter: 'blur(10px)', padding: '3px 9px', borderRadius: 7, fontSize: 12, color: 'rgba(255,255,255,0.9)', fontWeight: 500, fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.06)' }}>
           {label}
         </span>
@@ -147,19 +154,12 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isSp
         )}
       </div>
 
-      {/* Video-off badge */}
-      {videoOff && (
-        <div style={{ position: 'absolute', top: 8, right: 8, width: 24, height: 24, borderRadius: '50%', background: 'rgba(239,68,68,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <IcVideoOff s={11} />
-        </div>
-      )}
-
       {/* Fullscreen button — visible on hover */}
       <button
         type="button"
         onClick={enterFullscreen}
         title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-        style={{ position: 'absolute', top: 8, right: videoOff ? 40 : 8, width: 28, height: 28, borderRadius: 8, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', opacity: 0, transition: 'opacity 0.15s', backdropFilter: 'blur(8px)', flexShrink: 0 }}
+        style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', opacity: 0, transition: 'opacity 0.15s', backdropFilter: 'blur(8px)', flexShrink: 0, zIndex: 1 }}
         className="tile-fullscreen-btn"
         onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.7)')}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.5)')}

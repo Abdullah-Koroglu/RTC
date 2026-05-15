@@ -30,6 +30,7 @@ export interface UseRoomReturn {
   chatMessages: ChatMessage[];
   screenStream: MediaStream | null;
   isScreenSharing: boolean;
+  peerNames: Map<string, string>;
   joinRoom: () => Promise<void>;
   leaveRoom: () => Promise<void>;
   publishMedia: (constraints?: MediaStreamConstraints) => Promise<MediaStream | null>;
@@ -59,6 +60,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [peerNames, setPeerNames] = useState<Map<string, string>>(new Map());
 
   const mediaClientRef = useRef<MediasoupClient | null>(null);
   // producerId → peerId
@@ -109,6 +111,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       await initializeMediasoup();
       await signalingClient.joinRoom(roomId);
       setRoomState('joined');
+      // Announce our display name to existing participants
+      void signalingClient.sendNameAnnounce(roomId, displayName ?? peerId).catch(() => undefined);
     } catch (err) {
       const joinError = err instanceof Error ? err : new Error('Failed to join room');
       setError(joinError);
@@ -327,8 +331,22 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('room.participant-joined', ({ participantId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
+          // Re-announce our name so the newly joined peer learns who we are
+          void signalingClient.sendNameAnnounce(roomId, displayName ?? peerId).catch(() => undefined);
           void syncRemoteProducers().catch((err) => {
             console.error('Sync failed after participant joined', { roomId, peerId, remotePeerId, error: err });
+          });
+        }
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('name.announce', ({ participantId, displayName: remoteName }) => {
+        if (participantId !== peerId) {
+          setPeerNames((prev) => {
+            const next = new Map(prev);
+            next.set(participantId, remoteName);
+            return next;
           });
         }
       }),
@@ -419,6 +437,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     chatMessages,
     screenStream,
     isScreenSharing,
+    peerNames,
     joinRoom,
     leaveRoom,
     publishMedia,

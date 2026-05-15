@@ -1,6 +1,6 @@
 import { TypedEventEmitter } from '../events/event-emitter';
 
-export type SignalKind = 'offer' | 'answer' | 'ice-candidate' | 'chat';
+export type SignalKind = 'offer' | 'answer' | 'ice-candidate' | 'chat' | 'name-announce';
 
 // Inbound event types from signaling server
 export type InboundSignalingEvent =
@@ -75,6 +75,7 @@ export interface SignalingClientEventMap {
     data: unknown;
   };
   'chat.received': { roomId: string; participantId: string } & ChatMessagePayload;
+  'name.announce': { roomId: string; participantId: string; displayName: string };
   'reconnect.scheduled': { delayMs: number; attempt: number };
   'reconnect.succeeded': { attempt: number };
   'reconnect.failed': { attempt: number; error: Error };
@@ -277,6 +278,24 @@ export class SignalingClient {
     });
   }
 
+  async sendNameAnnounce(roomId: string, displayName: string): Promise<void> {
+    const requestId = this.generateRequestId();
+    const message: OutboundSignalingEvent = {
+      type: 'signal.relay',
+      roomId,
+      payload: { kind: 'name-announce', data: { displayName } },
+      requestId,
+    };
+    await this.sendMessage(message);
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        resolve(); // non-critical, don't reject
+      }, 3000);
+      this.pendingRequests.set(requestId, { resolve: () => { clearTimeout(timeout); resolve(); }, reject, timeout });
+    });
+  }
+
   async sendChatMessage(roomId: string, text: string, senderName: string): Promise<void> {
     const requestId = this.generateRequestId();
     const payload: ChatMessagePayload = { text, senderName, ts: Date.now() };
@@ -383,6 +402,13 @@ export class SignalingClient {
             text: payload.text,
             senderName: payload.senderName,
             ts: payload.ts,
+          });
+        } else if (message.payload.kind === 'name-announce') {
+          const payload = message.payload.data as { displayName: string };
+          this.emitter.emit('name.announce', {
+            roomId: message.roomId,
+            participantId: message.participantId,
+            displayName: payload.displayName,
           });
         } else {
           this.emitter.emit('signal.received', {
