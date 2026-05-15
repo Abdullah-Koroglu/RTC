@@ -1,0 +1,112 @@
+konusan kisinin etrafina renklendirme   
+
+
+Toplantı Yönetimi
+
+Toplantı planlama (takvim entegrasyonu, Google Calendar/Outlook)
+Bekleme odası (host onaylamadan kimse giremesin)
+Toplantı şifresi
+Tekrar kullanılabilir oda linkleri (meet.dis.app/abdullahkoroglu gibi)
+Toplantı süresi limiti / otomatik kapanma
+
+İçerik & İşbirliği
+
+Whiteboard (gerçek zamanlı ortak çizim)
+Dosya paylaşımı (PDF, resim drop)
+Ortak not defteri (toplantı notları)
+Anket / el kaldırma özelliği
+Breakout room (küçük gruplara böl)
+
+AI Özellikleri
+
+Otomatik transkript (konuşmaları yazıya dök)
+Toplantı özeti (AI ile)
+Gürültü engelleme (AI noise cancellation)
+Sanal arka plan (blur veya resim)
+Gerçek zamanlı çeviri / altyazı
+
+Moderasyon
+
+Host kontrolleri (mic kapat, odadan at, ekranı kilitle)
+Katılımcı izin seviyeleri (sadece izle, konuşabilir, her şey)
+Kayıt (toplantıyı kaydet, sonra indir)
+
+Entegrasyonlar
+
+Slack entegrasyonu (slash command ile oda aç)
+Webhook desteği (toplantı başladı/bitti event'leri)
+Takvim widget (embed)
+Zapier/n8n bağlantısı
+
+Monetizasyon
+
+Free plan: max 4 kişi, 40 dk
+Pro plan: sınırsız kişi, kayıt, AI özellikler
+Team plan: yönetim paneli, SSO, analytics
+
+
+---- optimizasyon -----
+
+Sende gordugum riskli noktalar:
+
+TURN sunucusu verbose log acik: coturn.conf
+
+TURN credentials endpoint auth’suz: route.ts
+
+mediasoup hem UDP hem TCP, genis port araligi ile dis dunyaya acik: docker-compose.prod.yml
+
+Bunun onune nasil gecersin
+
+Hemen hasar azaltma
+
+Coturn verbose kapat.
+/turn/credentials endpointine auth zorunlulugu koy (en azindan signed user/JWT).
+Nginx tarafinda /turn/credentials icin rate-limit ekle.
+Mediasoup TCP fallback gercekten gerekmiyorsa kapat (MEDIASOUP_ENABLE_TCP false).
+Mediasoup RTP port araligini daralt (or. 42000-42100 gibi, ihtiyaca gore).
+UFW’de sadece gereken portlari acik tut, test icin acilanlari kapat.
+Kaynak limitleri koy
+Her container icin CPU ve RAM limit tanimla (en azindan mediasoup, coturn, web, api).
+Docker restart loop’u varsa önce sebebi cozulmeden reboot etme; loop CPU’yu sisirir.
+Abuse korumasi
+fail2ban + nginx access/error log ban kuralari.
+TURN ve signaling icin request frequency siniri.
+Bot taramalarina karsi connection sayisi limitleri.
+Nasil monitor edersin
+En pratik 2 katman:
+
+Anlik bakis (olay aninda)
+
+docker stats
+top veya htop
+docker ps ile restart var mi
+docker logs container_adi --since 10m
+ss -s ve ss -lntup ile socket/connection patlamasi var mi
+Kalici izleme
+Node Exporter + cAdvisor + Prometheus + Grafana
+Loki + Promtail ile log merkezi toplama
+Alarm kur:
+CPU > %80 (5 dk)
+Memory > %85
+Container restart count artisi
+5xx oraninda sicrama
+TURN credential istek sayisi anomalisi
+Bu normal mi, neden reboot gerektirdi
+Kisa cevap: Hayir, normal degil.
+Muhtemel kok nedenler:
+Dis internet taramasi/abuse
+3478, 5349 ve RTP araliklari internetten taraniyor olabilir.
+Coturn verbose oldugu icin log I/O + CPU yukselir.
+Auth’suz TURN credential
+Herkes credential alip TURN’i suistimal ediyor olabilir.
+Bu hem API hem TURN hem de network kaynaklarini sisirir.
+Restart loop veya hata tekrar deneme
+Bir servis surekli crash-restart olunca CPU yuksek kalabilir.
+Reboot gecici rahatlatir ama kok neden kalir.
+Log seviyesi ve worker ayarlari
+Mediasoup log taglari ve coturn verbose prod icin agresif.
+Neyi hedeflemelisin
+
+Idle durumda CPU dusmeli.
+Birkac containerin kucuk taban tuketimi olur ama tavan olmamali.
+Reboot yerine once hangi container CPU yiyor onu 2 dakikada tespit edip izole etmelisin.

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Link — Video Conferencing</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; background: #0a0c14; }
+    body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+    #root { height: 100%; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+    /* Inputs */
+    input::placeholder { color: rgba(255,255,255,0.22); }
+    input, select, button { font-family: 'Inter', sans-serif; }
+    select option { background: #1a1f2e; color: white; }
+
+    /* Screen-in animation */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .screen-enter { animation: fadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+    /* Mobile frame when forceMobile is on */
+    .mobile-frame {
+      width: 390px !important;
+      height: 844px !important;
+      border-radius: 44px !important;
+      overflow: hidden !important;
+      box-shadow: 0 0 0 10px #1a1f2e, 0 0 0 11px rgba(255,255,255,0.08), 0 40px 120px rgba(0,0,0,0.7) !important;
+      position: relative;
+    }
+    .mobile-frame::before {
+      content: '';
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 120px; height: 34px;
+      background: #1a1f2e;
+      border-radius: 0 0 20px 20px;
+      z-index: 9999; pointer-events: none;
+    }
+    .mobile-wrapper {
+      display: flex; align-items: center; justify-content: center;
+      width: 100vw; height: 100vh;
+      background: #0a0c14;
+    }
+  </style>
+
+  <!-- React + Babel pinned -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+    integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+    crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+    integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+    crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+    integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+    crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" src="link-join.jsx"></script>
+  <script type="text/babel" src="link-room.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { TweaksPanel, TweakSection, TweakSlider, TweakToggle, TweakColor, useTweaks } = window;
+    const { JoinScreen, RoomScreen } = window;
+
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "participantCount": 5,
+      "forceMobile": true,
+      "accentColor": "#3B82F6"
+    }/*EDITMODE-END*/;
+
+    /* ── Connecting splash ──────────────────────────────────── */
+    function ConnectingSplash({ name, onDone }) {
+      useEffect(() => {
+        const t = setTimeout(onDone, 1800);
+        return () => clearTimeout(t);
+      }, []);
+
+      const { LinkLogoMark } = window;
+      const initials = name.split(' ').filter(Boolean).map(n => n[0]).join('').toUpperCase().slice(0,2);
+
+      return (
+        <div style={{
+          width: '100%', height: '100%',
+          background: '#0a0c14',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          fontFamily: 'Inter, sans-serif',
+        }}>
+          <div style={{ position: 'relative', marginBottom: 28 }}>
+            {/* Pulsing ring */}
+            <div style={{
+              position: 'absolute', inset: -16,
+              borderRadius: '50%',
+              border: '2px solid rgba(59,130,246,0.3)',
+              animation: 'pulse-ring 1.2s ease-out infinite',
+            }}/>
+            <div style={{
+              width: 72, height: 72, borderRadius: '50%',
+              background: 'linear-gradient(135deg, #3B82F6cc, #1E3FC4aa)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 26, fontWeight: 700, color: 'white',
+            }}>{initials}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <LinkLogoMark size={22}/>
+            <span style={{ color: 'white', fontSize: 18, fontWeight: 600, letterSpacing: '-0.02em' }}>Link</span>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>Joining room…</span>
+          <DotsLoader />
+
+          <style>{`
+            @keyframes pulse-ring {
+              0%   { transform: scale(0.85); opacity: 0.7; }
+              70%  { transform: scale(1.35); opacity: 0; }
+              100% { transform: scale(1.35); opacity: 0; }
+            }
+            @keyframes dot-bounce {
+              0%, 80%, 100% { transform: translateY(0); opacity: 0.3; }
+              40%            { transform: translateY(-5px); opacity: 1; }
+            }
+          `}</style>
+        </div>
+      );
+    }
+
+    function DotsLoader() {
+      return (
+        <div style={{ display: 'flex', gap: 5, marginTop: 18 }}>
+          {[0,1,2].map(i => (
+            <span key={i} style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: '#3B82F6',
+              display: 'block',
+              animation: `dot-bounce 1.2s ease-in-out ${i * 0.15}s infinite`,
+            }}/>
+          ))}
+        </div>
+      );
+    }
+
+    /* ── App ─────────────────────────────────────────────────── */
+    function App() {
+      const [screen, setScreen] = useState('join');   // 'join' | 'connecting' | 'room'
+      const [userName, setUserName] = useState('');
+      const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+      const handleJoin = name => {
+        setUserName(name);
+        setScreen('connecting');
+      };
+      const handleConnected = () => setScreen('room');
+      const handleLeave = () => setScreen('join');
+
+      const { forceMobile, participantCount, accentColor } = tweaks;
+
+      /* Mobile wrapper: wraps content in a phone bezel */
+      const wrapMobile = content => forceMobile ? (
+        <div className="mobile-wrapper">
+          <div className="mobile-frame" style={{ width: 390, height: 844 }}>
+            {content}
+          </div>
+        </div>
+      ) : content;
+
+      return (
+        <>
+          {screen === 'join' && wrapMobile(
+            <div className="screen-enter" style={{ height: '100%' }}>
+              <JoinScreen onJoin={handleJoin} roomId="room-k9p2m" />
+            </div>
+          )}
+
+          {screen === 'connecting' && wrapMobile(
+            <ConnectingSplash name={userName} onDone={handleConnected} />
+          )}
+
+          {screen === 'room' && wrapMobile(
+            <div className="screen-enter" style={{ height: '100%' }}>
+              <RoomScreen
+                userName={userName}
+                onLeave={handleLeave}
+                participantCount={participantCount}
+                isMobile={forceMobile}
+                accent={accentColor}
+              />
+            </div>
+          )}
+
+          <TweaksPanel>
+            <TweakSection title="Room simulation">
+              <TweakSlider
+                label="Participants"
+                value={participantCount}
+                min={1} max={6} step={1}
+                onChange={v => setTweak('participantCount', v)}
+              />
+              <TweakToggle
+                label="Mobile frame"
+                value={forceMobile}
+                onChange={v => setTweak('forceMobile', v)}
+              />
+            </TweakSection>
+            <TweakSection title="Brand">
+              <TweakColor
+                label="Accent color"
+                value={accentColor}
+                options={['#3B82F6', '#8B5CF6', '#06B6D4']}
+                onChange={v => setTweak('accentColor', v)}
+              />
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
