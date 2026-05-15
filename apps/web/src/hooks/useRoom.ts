@@ -109,10 +109,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
 
       await initializeMediasoup();
-      await signalingClient.joinRoom(roomId);
+      // joinRoom returns the current peer names map from the signaling server
+      const initialPeerNames = await signalingClient.joinRoom(roomId, displayName ?? peerId);
+      setPeerNames(new Map(Object.entries(initialPeerNames)));
       setRoomState('joined');
-      // Announce our display name to existing participants
-      void signalingClient.sendNameAnnounce(roomId, displayName ?? peerId).catch(() => undefined);
     } catch (err) {
       const joinError = err instanceof Error ? err : new Error('Failed to join room');
       setError(joinError);
@@ -329,10 +329,16 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     const listeners: (() => void)[] = [];
 
     listeners.push(
-      signalingClient.on('room.participant-joined', ({ participantId: remotePeerId }) => {
+      signalingClient.on('room.participant-joined', ({ participantId: remotePeerId, displayName: remoteDisplayName }) => {
         if (remotePeerId !== peerId) {
-          // Re-announce our name so the newly joined peer learns who we are
-          void signalingClient.sendNameAnnounce(roomId, displayName ?? peerId).catch(() => undefined);
+          // Store the display name if provided by the signaling server
+          if (remoteDisplayName) {
+            setPeerNames((prev) => {
+              const next = new Map(prev);
+              next.set(remotePeerId, remoteDisplayName);
+              return next;
+            });
+          }
           void syncRemoteProducers().catch((err) => {
             console.error('Sync failed after participant joined', { roomId, peerId, remotePeerId, error: err });
           });

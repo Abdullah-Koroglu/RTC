@@ -81,7 +81,7 @@ export class TransportManager {
 
       if (state === 'disconnected') {
         // Give 20 s for mobile network switches / brief outages before cleaning up
-        iceTimeoutId = setTimeout(triggerPeerGone, 20_000);
+        iceTimeoutId = setTimeout(triggerPeerGone, 5_000);
       } else if (state === 'connected' || state === 'completed') {
         cancelIceTimeout();
       } else if (state === 'failed') {

@@ -186,6 +186,7 @@ export class WebSocketGateway {
         this.rooms.join(event.roomId, {
           participantId: conn.participantId,
           connectionId: conn.connectionId,
+          displayName: event.displayName,
         });
         conn.rooms.add(event.roomId);
 
@@ -194,10 +195,13 @@ export class WebSocketGateway {
           roomId: event.roomId,
           participantId: conn.participantId,
           connectionId: conn.connectionId,
+          displayName: event.displayName,
         });
       }
 
-      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      // Return current room peer names so the new joiner immediately knows everyone's name
+      const peerNames = this.rooms.getPeerNames(event.roomId);
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true, data: { peerNames } });
       return;
     }
 

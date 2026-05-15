@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const clientJoinRoomSchema = z.object({
   type: z.literal('room.join'),
   roomId: z.string().min(1),
+  displayName: z.string().optional(),
   requestId: z.string().optional(),
 });
 
@@ -62,6 +63,7 @@ export type OutboundEvent =
       roomId: string;
       participantId: string;
       connectionId: string;
+      displayName?: string;
     }
   | {
       type: 'room.participant-left';

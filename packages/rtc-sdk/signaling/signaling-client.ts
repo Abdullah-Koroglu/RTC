@@ -11,6 +11,7 @@ export type InboundSignalingEvent =
       roomId: string;
       participantId: string;
       connectionId: string;
+      displayName?: string;
     }
   | {
       type: 'room.participant-left';
@@ -39,7 +40,7 @@ export type InboundSignalingEvent =
 
 // Outbound event types to signaling server
 export type OutboundSignalingEvent =
-  | { type: 'room.join'; roomId: string; requestId?: string }
+  | { type: 'room.join'; roomId: string; displayName?: string; requestId?: string }
   | { type: 'room.leave'; roomId: string; requestId?: string }
   | {
       type: 'signal.relay';
@@ -66,7 +67,7 @@ export interface SignalingClientEventMap {
   'signaling.disconnected': { reason?: string };
   'room.joined': { roomId: string };
   'room.left': { roomId: string };
-  'room.participant-joined': { roomId: string; participantId: string; connectionId: string };
+  'room.participant-joined': { roomId: string; participantId: string; connectionId: string; displayName?: string | undefined };
   'room.participant-left': { roomId: string; participantId: string; reason: string };
   'signal.received': {
     roomId: string;
@@ -189,15 +190,16 @@ export class SignalingClient {
     this.socket = null;
   }
 
-  async joinRoom(roomId: string): Promise<void> {
+  async joinRoom(roomId: string, displayName?: string): Promise<Record<string, string>> {
     const requestId = this.generateRequestId();
     const message: OutboundSignalingEvent = {
       type: 'room.join',
       roomId,
+      displayName,
       requestId,
     };
     await this.sendMessage(message);
-    
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(requestId);
@@ -205,9 +207,10 @@ export class SignalingClient {
       }, 5000);
 
       this.pendingRequests.set(requestId, {
-        resolve: () => {
+        resolve: (data: unknown) => {
           this.emitter.emit('room.joined', { roomId });
-          resolve();
+          const ackData = data as { peerNames?: Record<string, string> } | undefined;
+          resolve(ackData?.peerNames ?? {});
         },
         reject,
         timeout,
@@ -386,6 +389,7 @@ export class SignalingClient {
           roomId: message.roomId,
           participantId: message.participantId,
           connectionId: message.connectionId,
+          displayName: message.displayName,
         });
       } else if (message.type === 'room.participant-left') {
         this.emitter.emit('room.participant-left', {
