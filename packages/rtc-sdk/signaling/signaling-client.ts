@@ -40,7 +40,7 @@ export type InboundSignalingEvent =
 
 // Outbound event types to signaling server
 export type OutboundSignalingEvent =
-  | { type: 'room.join'; roomId: string; displayName?: string; requestId?: string }
+  | { type: 'room.join'; roomId: string; displayName?: string | undefined; requestId?: string | undefined }
   | { type: 'room.leave'; roomId: string; requestId?: string }
   | {
       type: 'signal.relay';
