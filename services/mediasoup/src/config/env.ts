@@ -75,6 +75,7 @@ const schema = z.object({
   MEDIASOUP_MAX_INCOMING_BITRATE: z.coerce.number().int().positive().default(1500000),
   MEDIASOUP_LOG_TAGS: z.string().default('ice,dtls,rtp,rtcp,bwe,score,simulcast,svc'),
   MEDIASOUP_CODECS_JSON: z.string().optional(),
+  SIGNALING_INTERNAL_URL: z.string().url().optional(),
 });
 
 const parsed = schema.parse(process.env);

@@ -79,14 +79,10 @@ export class TransportManager {
         state,
       }, 'transport_ice_state_changed');
 
-      if (state === 'disconnected') {
-        // Give 20 s for mobile network switches / brief outages before cleaning up
-        iceTimeoutId = setTimeout(triggerPeerGone, 5_000);
+      if (state === 'disconnected' || state === 'failed') {
+        triggerPeerGone();
       } else if (state === 'connected' || state === 'completed') {
         cancelIceTimeout();
-      } else if (state === 'failed') {
-        // ICE has definitively given up — clean up immediately
-        triggerPeerGone();
       }
     });
 

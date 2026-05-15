@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { env } from '@/config/env';
 import { buildApp } from '@/core/app';
 import { registerLifecycle } from '@/core/lifecycle';
@@ -9,6 +10,13 @@ async function bootstrap(): Promise<void> {
 
   await gateway.start();
   registerLifecycle(app, gateway);
+
+  // Internal endpoint for mediasoup to notify signaling when a peer is gone via ICE
+  app.post('/internal/peer-gone', async (request, reply) => {
+    const body = z.object({ roomId: z.string().min(1), peerId: z.string().min(1) }).parse(request.body);
+    await gateway.handlePeerGoneNotification(body.roomId, body.peerId);
+    return reply.send({ ok: true });
+  });
 
   await app.listen({
     host: env.HOST,

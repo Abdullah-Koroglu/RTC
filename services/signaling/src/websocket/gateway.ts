@@ -50,6 +50,16 @@ export class WebSocketGateway {
     this.startHeartbeat();
   }
 
+  async handlePeerGoneNotification(roomId: string, peerId: string): Promise<void> {
+    await this.dispatcher.publishRoomEvent(roomId, {
+      type: 'room.participant-left',
+      roomId,
+      participantId: peerId,
+      connectionId: 'mediasoup-eviction',
+      reason: 'disconnect',
+    });
+  }
+
   async close(): Promise<void> {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);

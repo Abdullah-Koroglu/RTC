@@ -23,6 +23,7 @@ services:
       MEDIASOUP_LOG_TAGS: ${MEDIASOUP_LOG_TAGS:-ice,dtls,rtp,rtcp,bwe,score,simulcast,svc}
       MEDIASOUP_CODECS_JSON: ${MEDIASOUP_CODECS_JSON}
       CORS_ORIGIN: http://localhost:3009
+      SIGNALING_INTERNAL_URL: http://signaling:4010
     ports:
       - '4020:4020'
       - '40000-40500:40000-40500/udp'

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import { useRoom } from '@/hooks/useRoom';
+import { useDevices } from '@/hooks/useDevices';
 import { VideoTile } from '@/components/VideoTile';
 import { ChatPanel } from '@/components/ChatPanel';
 import { generateUUID } from '@/lib/uuid';
@@ -237,9 +238,45 @@ function MiniToggle({ value, onChange }: { value: boolean; onChange: (v: boolean
 }
 
 /* ── Settings modal ── */
-function SettingsModal({ onClose }: { onClose: () => void }) {
+function SettingsModal({ onClose, onRepublish }: { onClose: () => void; onRepublish: (camId: string, micId: string) => void }) {
+  const { cameras, microphones } = useDevices();
+  const [selectedCam, setSelectedCam] = useState(() => (typeof window !== 'undefined' ? sessionStorage.getItem('rtc:videoDeviceId') ?? '' : ''));
+  const [selectedMic, setSelectedMic] = useState(() => (typeof window !== 'undefined' ? sessionStorage.getItem('rtc:audioDeviceId') ?? '' : ''));
   const [blur, setBlur] = useState(false);
   const [noise, setNoise] = useState(true);
+
+  // Set defaults once devices are enumerated
+  useEffect(() => {
+    if (cameras.length > 0 && !selectedCam) setSelectedCam(cameras[0]!.deviceId);
+  }, [cameras, selectedCam]);
+  useEffect(() => {
+    if (microphones.length > 0 && !selectedMic) setSelectedMic(microphones[0]!.deviceId);
+  }, [microphones, selectedMic]);
+
+  const handleApply = () => {
+    if (selectedCam) sessionStorage.setItem('rtc:videoDeviceId', selectedCam);
+    if (selectedMic) sessionStorage.setItem('rtc:audioDeviceId', selectedMic);
+    onRepublish(selectedCam, selectedMic);
+    onClose();
+  };
+
+  const DeviceRow = ({ label, devices, value, onChange }: { label: string; devices: MediaDeviceInfo[]; value: string; onChange: (v: string) => void }) => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+      <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>{label}</span>
+      <div style={{ position: 'relative', minWidth: 180 }}>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 28px 8px 10px', color: 'rgba(255,255,255,0.75)', fontSize: 12, outline: 'none', appearance: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+        >
+          {devices.length === 0 && <option value="">No device found</option>}
+          {devices.map((d) => <option key={d.deviceId} value={d.deviceId} style={{ background: '#1A1F2E' }}>{d.label || `Device ${d.deviceId.slice(0, 8)}`}</option>)}
+        </select>
+        <div style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><IcChev c="rgba(255,255,255,0.3)" /></div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: 'rgba(18,22,34,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, width: '100%', maxWidth: 440, boxShadow: '0 32px 80px rgba(0,0,0,0.6)', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
@@ -247,26 +284,18 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><IcGear s={16} c="#3B82F6" /><span style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>Settings</span></div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.5)' }}><IcX /></button>
         </div>
-        {[
-          { title: 'Audio', rows: [{ label: 'Microphone', opts: ['Default Microphone'] }, { label: 'Speaker', opts: ['Default Speaker'] }] },
-          { title: 'Video', rows: [{ label: 'Camera', opts: ['Default Camera'] }] },
-        ].map((sec) => (
-          <div key={sec.title} style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14 }}>{sec.title}</div>
-            {sec.rows.map((r) => (
-              <div key={r.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>{r.label}</span>
-                <div style={{ position: 'relative', minWidth: 180 }}>
-                  <select style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 28px 8px 10px', color: 'rgba(255,255,255,0.75)', fontSize: 12, outline: 'none', appearance: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-                    {r.opts.map((o) => <option key={o} style={{ background: '#1A1F2E' }}>{o}</option>)}
-                  </select>
-                  <div style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><IcChev c="rgba(255,255,255,0.3)" /></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ))}
-        <div style={{ padding: '16px 20px' }}>
+
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14 }}>Audio</div>
+          <DeviceRow label="Microphone" devices={microphones} value={selectedMic} onChange={setSelectedMic} />
+        </div>
+
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14 }}>Video</div>
+          <DeviceRow label="Camera" devices={cameras} value={selectedCam} onChange={setSelectedCam} />
+        </div>
+
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 14 }}>Effects</div>
           {[{ label: 'Background blur', val: blur, set: setBlur }, { label: 'Noise cancellation', val: noise, set: setNoise }].map((r) => (
             <div key={r.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -274,6 +303,14 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
               <MiniToggle value={r.val} onChange={r.set} />
             </div>
           ))}
+        </div>
+
+        <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button onClick={handleApply} style={{ padding: '9px 20px', background: '#3B82F6', border: 'none', borderRadius: 9, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'background 0.15s' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#2563EB')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#3B82F6')}>
+            Apply
+          </button>
         </div>
       </div>
     </div>
@@ -514,6 +551,7 @@ export default function RoomPage() {
     peerNames,
     leaveRoom,
     publishMedia,
+    unpublishMedia,
     setAudioEnabled,
     setVideoEnabled,
     startScreenShare,
@@ -581,14 +619,16 @@ export default function RoomPage() {
     const currentKeys = new Set(remoteStreams.keys());
     for (const key of currentKeys) {
       if (!prevRemoteKeys.current.has(key) && !key.endsWith(':screen')) {
-        const ini = key.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
-        addToast(`${key} joined`, ini, colorFor(key));
+        const name = peerNames.get(key) ?? key;
+        const ini = name.split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+        addToast(`${name} joined`, ini, colorFor(key));
       }
     }
     for (const key of prevRemoteKeys.current) {
       if (!currentKeys.has(key) && !key.endsWith(':screen')) {
-        const ini = key.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
-        addToast(`${key} left`, ini, '#6B7280');
+        const name = peerNames.get(key) ?? key;
+        const ini = name.split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+        addToast(`${name} left`, ini, '#6B7280');
       }
     }
     prevRemoteKeys.current = currentKeys;
@@ -630,6 +670,16 @@ export default function RoomPage() {
 
   const onLeave = async () => {
     try { await leaveRoom(); } finally { router.push('/'); }
+  };
+
+  const onRepublish = async (camId: string, micId: string) => {
+    unpublishMedia('video');
+    unpublishMedia('audio');
+    const constraints: MediaStreamConstraints = {
+      video: camId ? { deviceId: { exact: camId } } : true,
+      audio: micId ? { deviceId: { exact: micId } } : true,
+    };
+    await publishMedia(constraints);
   };
 
   const onJoinBreakout = async (targetRoomId: string) => {
@@ -753,7 +803,7 @@ export default function RoomPage() {
         </div>
       )}
 
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} onRepublish={(c, m) => void onRepublish(c, m)} />}
       {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
     </div>
   );

@@ -1,3 +1,4 @@
+import { env } from '@/config/env';
 import { logger } from '@/core/logger';
 import { ConsumerManager } from '@/consumers/consumer-manager';
 import { PeerManager } from '@/peers/peer-manager';
@@ -199,6 +200,17 @@ export class RoomManager {
 
     if (this.peers.listRoomPeers(roomId).length === 0) {
       this.closeRoom(roomId);
+    }
+
+    // Notify signaling server so it can immediately broadcast participant-left
+    if (env.SIGNALING_INTERNAL_URL) {
+      void fetch(`${env.SIGNALING_INTERNAL_URL}/internal/peer-gone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId, peerId }),
+      }).catch((err: unknown) => {
+        logger.warn({ roomId, peerId, err }, 'signaling_peer_gone_notify_failed');
+      });
     }
   }
 
