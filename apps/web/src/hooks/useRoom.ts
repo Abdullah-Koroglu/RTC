@@ -170,12 +170,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       throw err;
     }
 
-    // --- Screen share cleanup ---
-    // For screen producers, unlike camera/mic, we DO want to clean up when the
-    // producer disappears (peer stopped sharing). Camera/mic producers stay in
-    // subscribedProducerIdsRef to prevent ghost re-subscription after disconnect;
-    // screen producers are removed so the peer can share again later.
     const liveProducerIds = new Set(producers.map((p) => p.producerId));
+
+    // --- Screen share cleanup ---
+    // Screen producers are removed when they disappear (peer stopped sharing).
     for (const [screenProducerId, streamKey] of screenProducerKeysRef.current) {
       if (!liveProducerIds.has(screenProducerId)) {
         setRemoteStreams((prev) => {
@@ -190,6 +188,34 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         subscribedProducerIdsRef.current.delete(screenProducerId);
         producerOwnerRef.current.delete(screenProducerId);
         screenProducerKeysRef.current.delete(screenProducerId);
+      }
+    }
+
+    // --- Camera/mic orphan cleanup ---
+    // If a peer's camera/mic stream exists in remoteStreams but they no longer have
+    // any live producers in mediasoup, remove the stream. This handles the case where
+    // participant-left from signaling was missed (e.g. during heartbeat window) but
+    // mediasoup already cleaned up the peer after ICE disconnect.
+    const livePeerIds = new Set(producers.map((p) => p.peerId));
+    for (const [streamKey, stream] of remoteStreams) {
+      if (streamKey.includes(':')) continue; // screen keys handled above
+      if (streamKey === peerId) continue;    // own stream
+      if (livePeerIds.has(streamKey)) continue; // peer still has producers
+
+      stream.getTracks().forEach((t) => t.stop());
+      setRemoteStreams((prev) => {
+        const updated = new Map(prev);
+        updated.delete(streamKey);
+        return updated;
+      });
+      // Clear this peer's entries so they can re-subscribe if they rejoin
+      const ownedIds: string[] = [];
+      producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
+        if (ownerPeerId === streamKey) ownedIds.push(producerId);
+      });
+      for (const pid of ownedIds) {
+        subscribedProducerIdsRef.current.delete(pid);
+        producerOwnerRef.current.delete(pid);
       }
     }
 
@@ -417,15 +443,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     return () => clearInterval(intervalId);
   }, [roomState, syncRemoteProducers]);
 
-  // Best-effort cleanup when the tab is closed/refreshed
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      const url = `${env.NEXT_PUBLIC_MEDIASOUP_URL}/rooms/${roomId}/peers/${peerId}`;
-      navigator.sendBeacon(url);
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [env.NEXT_PUBLIC_MEDIASOUP_URL, roomId, peerId]);
+  // Note: beforeunload cleanup is handled by MediasoupClient.unloadHandler
+  // (fetch DELETE keepalive:true) — no need for a duplicate handler here.
 
   // Auto-join
   useEffect(() => {

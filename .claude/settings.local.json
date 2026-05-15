@@ -6,7 +6,8 @@
       "Bash(git commit -m ' *)",
       "Bash(mkdir -p \"c:\\\\Users\\\\abdullahkoroglu\\\\Documents\\\\sources\\\\DIS\\\\RTC\\\\apps\\\\web\\\\src\\\\app\\\\join\\\\[roomId]\")",
       "Bash(ls \"c:\\\\Users\\\\abdullahkoroglu\\\\.claude\\\\projects\\\\c--Users-abdullahkoroglu-Documents-sources-DIS-RTC\\\\memory\\\\\" 2>/dev/null || echo \"directory empty or not found\")",
-      "Read(//c/Users/abdullahkoroglu/.claude/projects/c--Users-abdullahkoroglu-Documents-sources-DIS-RTC/memory\" 2>/dev/**)"
+      "Read(//c/Users/abdullahkoroglu/.claude/projects/c--Users-abdullahkoroglu-Documents-sources-DIS-RTC/memory\" 2>/dev/**)",
+      "Read(//c/Users/abdullahkoroglu/packages/rtc-sdk/media/**)"
     ],
     "additionalDirectories": [
       "c:\\Users\\abdullahkoroglu\\Documents\\sources\\DIS\\RTC\\apps\\web\\src\\app\\join"
