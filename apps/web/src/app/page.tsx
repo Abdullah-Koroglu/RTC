@@ -1,266 +1,143 @@
 'use client';
 
-import type { FormEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession, signIn } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import { generateUUID } from '@/lib/uuid';
 
-const SS_DISPLAY_NAME = 'rtc:displayName';
-const SS_PEER_ID = 'rtc:peerId';
-
 export const dynamic = 'force-dynamic';
-
-function getOrCreatePeerId(): string {
-  const stored = sessionStorage.getItem(SS_PEER_ID);
-  if (stored) return stored;
-  const id = `usr-${generateUUID().slice(0, 8)}`;
-  sessionStorage.setItem(SS_PEER_ID, id);
-  return id;
-}
 
 export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
-
   const [showCode, setShowCode] = useState(false);
   const codeRef = useRef<HTMLInputElement>(null);
-  const nameRef = useRef<HTMLInputElement>(null);
-  const [savedName, setSavedName] = useState('');
 
-  useEffect(() => {
-    // Pre-fill name from session or sessionStorage
-    const name = session?.user?.name ?? sessionStorage.getItem(SS_DISPLAY_NAME) ?? '';
-    setSavedName(name);
-    if (nameRef.current) nameRef.current.value = name;
-    if (session?.user?.name) {
-      sessionStorage.setItem(SS_DISPLAY_NAME, session.user.name);
-    }
-  }, [session]);
-
-  const startMeeting = () => {
-    const name = nameRef.current?.value.trim() ?? '';
-    if (!name) { nameRef.current?.focus(); return; }
-    const peerId = session?.user?.id ?? getOrCreatePeerId();
-    sessionStorage.setItem(SS_DISPLAY_NAME, name);
-    sessionStorage.setItem(SS_PEER_ID, peerId);
-    router.push(`/room/${generateUUID()}`);
+  const goToJoin = (roomId: string) => {
+    const dest = `/join/${encodeURIComponent(roomId)}`;
+    router.push(dest);
   };
 
-  const joinWithCode = (e: FormEvent) => {
-    e.preventDefault();
+  const startMeeting = () => goToJoin(generateUUID());
+
+  const joinWithCode = () => {
     const code = codeRef.current?.value.trim() ?? '';
-    const name = nameRef.current?.value.trim() ?? '';
-    if (!code || !name) return;
-    const peerId = session?.user?.id ?? getOrCreatePeerId();
-    sessionStorage.setItem(SS_DISPLAY_NAME, name);
-    sessionStorage.setItem(SS_PEER_ID, peerId);
-    router.push(`/room/${encodeURIComponent(code)}`);
+    if (!code) { codeRef.current?.focus(); return; }
+    goToJoin(code);
   };
 
-  const displayName = session?.user?.name ?? savedName;
+  const displayName = session?.user?.name ?? '';
   const avatar = session?.user?.image;
   const initials = displayName
     ? displayName.trim().split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
     : null;
 
   return (
-    <main
-      className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-4 py-6 font-sans"
-      style={{ background: '#0a0c14' }}
-    >
+    <main style={{ minHeight: '100vh', background: '#0a0c14', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', padding: '24px', position: 'relative', overflow: 'hidden' }}>
       {/* Background glow */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(ellipse 80% 55% at 50% 0%, rgba(59,130,246,0.13) 0%, transparent 70%)' }}
-      />
-      {/* Grid */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.022]"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)',
-          backgroundSize: '56px 56px',
-        }}
-      />
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 80% 60% at 50% 5%, rgba(59,130,246,0.13) 0%, transparent 70%)' }} />
+      {/* Grid overlay */}
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.022, backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)', backgroundSize: '56px 56px' }} />
 
       {/* Nav */}
-      <nav
-        className="absolute inset-x-0 top-0 flex items-center justify-between px-6 py-4"
-        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-      >
-        <div className="flex items-center gap-2.5">
-          <Image src="/logo-only.png" width={28} height={28} alt="Link" className="object-contain" />
-          <span className="text-[17px] font-bold tracking-tight text-white">Link</span>
+      <nav style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 32px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Image src="/logo-only.png" width={30} height={30} alt="Link" style={{ objectFit: 'contain' }} />
+          <span style={{ color: 'white', fontWeight: 700, fontSize: 17, letterSpacing: '-0.02em' }}>Link</span>
         </div>
-
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', gap: 10 }}>
           {session ? (
-            <>
+            <button
+              onClick={() => router.push('/profile')}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 24, padding: '6px 12px 6px 6px', cursor: 'pointer', fontFamily: 'inherit' }}
+            >
               {avatar ? (
-                <Image
-                  src={avatar}
-                  width={32}
-                  height={32}
-                  alt={session.user.name ?? ''}
-                  className="rounded-full"
-                />
+                <Image src={avatar} width={24} height={24} alt={displayName} style={{ borderRadius: '50%' }} />
               ) : (
-                <div
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
-                  style={{ background: 'linear-gradient(135deg,#3B82F6,#1E3FC4)' }}
-                >
-                  {initials}
+                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg,#3B82F6,#1E3FC4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white', flexShrink: 0 }}>
+                  {initials ?? '?'}
                 </div>
               )}
-              <button
-                onClick={() => router.push('/profile')}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium transition"
-                style={{ color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)' }}
-              >
-                Profil
-              </button>
-            </>
+              <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: 500 }}>{displayName}</span>
+            </button>
           ) : (
             <>
-              <NavButton label="Giriş Yap" onClick={() => void signIn()} outline />
-              <NavButton label="Kayıt Ol" onClick={() => router.push('/auth/signin')} />
+              <NavBtn label="Log in" onClick={() => router.push('/auth/signin')} outline />
+              <NavBtn label="Sign up" onClick={() => router.push('/auth/signin')} />
             </>
           )}
         </div>
       </nav>
 
       {/* Hero */}
-      <div className="relative z-10 flex flex-col items-center text-center" style={{ maxWidth: 560 }}>
-        <div className="relative mb-7 inline-block">
-          <div
-            className="pointer-events-none absolute inset-[-20px] rounded-full"
-            style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.18) 0%, transparent 70%)' }}
-          />
-          <Image src="/logo-only.png" width={92} height={92} alt="Link" className="relative z-10 object-contain" />
+      <div style={{ textAlign: 'center', zIndex: 1, maxWidth: 560 }}>
+        <div style={{ marginBottom: 28, position: 'relative', display: 'inline-block' }}>
+          <div style={{ position: 'absolute', inset: -20, borderRadius: '50%', background: 'radial-gradient(circle, rgba(59,130,246,0.18) 0%, transparent 70%)', pointerEvents: 'none' }} />
+          <Image src="/logo-only.png" width={96} height={96} alt="Link" style={{ objectFit: 'contain', position: 'relative', zIndex: 1 }} />
         </div>
-
-        <h1
-          className="mb-3 text-[52px] font-extrabold leading-none tracking-tight text-white"
-          style={{ letterSpacing: '-0.04em' }}
-        >
-          Link
-        </h1>
-        <p className="mb-10 text-lg" style={{ color: 'rgba(255,255,255,0.45)' }}>
+        <h1 style={{ color: 'white', fontSize: 52, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, marginBottom: 10 }}>Link</h1>
+        <p style={{ color: 'rgba(255,255,255,0.48)', fontSize: 20, fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 40, lineHeight: 1.4 }}>
           Crystal clear conversations.
         </p>
 
-        {/* Name field */}
-        <div className="mb-5 w-full max-w-xs">
-          <input
-            ref={nameRef}
-            id="peer-id"
-            defaultValue={savedName}
-            placeholder="Adınız"
-            autoComplete="nickname"
-            spellCheck={false}
-            className="w-full rounded-xl px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/30"
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
-            }}
-            onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
-            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
-          />
-        </div>
-
         {/* CTAs */}
-        <div className="flex flex-wrap justify-center gap-3">
-          <HeroButton primary onClick={startMeeting} label="Toplantı Başlat" />
-          <HeroButton onClick={() => setShowCode((v) => !v)} label={showCode ? 'İptal' : 'Kodla Katıl'} />
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <HeroBtn primary onClick={startMeeting} label="Start a meeting" />
+          <HeroBtn onClick={() => setShowCode((v) => !v)} label={showCode ? 'Cancel' : 'Join with code'} />
         </div>
 
-        {/* Join with code */}
+        {/* Inline code input */}
         {showCode && (
-          <form
-            onSubmit={joinWithCode}
-            className="mt-5 flex w-full max-w-sm gap-2"
-            style={{ animation: 'fadeUp 0.2s ease both' }}
-          >
+          <div style={{ marginTop: 20, display: 'flex', gap: 10, maxWidth: 380, margin: '20px auto 0', animation: 'fadeUp 0.2s ease both' }}>
             <input
               ref={codeRef}
               id="room-id"
-              placeholder="Oda kodu (örn. room-k9p2m)"
+              placeholder="Enter room code (e.g. room-k9p2m)"
               spellCheck={false}
               autoFocus
-              className="min-w-0 flex-1 rounded-xl px-4 py-3 text-sm text-white outline-none placeholder:text-white/30"
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}
-              onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
-              onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.15)')}
+              onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
+              style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 11, padding: '13px 14px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'Inter, sans-serif' }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.6)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)')}
             />
             <button
-              type="submit"
-              className="rounded-xl px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-500"
-              style={{ background: '#3B82F6', border: 'none', cursor: 'pointer' }}
+              onClick={joinWithCode}
+              style={{ padding: '0 20px', background: '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}
             >
-              Katıl
+              Join
             </button>
-          </form>
+          </div>
         )}
 
-        <p className="mt-12 text-xs" style={{ color: 'rgba(255,255,255,0.18)' }}>
-          Dünyanın dört bir yanındaki 50.000+ ekip tarafından güvenilir
+        <p style={{ marginTop: 44, color: 'rgba(255,255,255,0.2)', fontSize: 12 }}>
+          Trusted by 50,000+ teams worldwide
         </p>
       </div>
-
-      <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
     </main>
   );
 }
 
-function NavButton({ label, onClick, outline }: { label: string; onClick: () => void; outline?: boolean }) {
+function NavBtn({ label, onClick, outline }: { label: string; onClick: () => void; outline?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-lg px-4 py-2 text-sm font-medium transition"
-      style={{
-        background: outline ? 'transparent' : '#3B82F6',
-        border: outline ? '1px solid rgba(255,255,255,0.15)' : 'none',
-        color: 'rgba(255,255,255,0.85)',
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-      }}
+      style={{ padding: '8px 18px', borderRadius: 8, fontFamily: 'Inter, sans-serif', fontSize: 13, fontWeight: 500, cursor: 'pointer', background: outline ? 'transparent' : '#3B82F6', border: outline ? '1px solid rgba(255,255,255,0.15)' : 'none', color: 'rgba(255,255,255,0.85)', transition: 'all 0.15s' }}
+      onMouseEnter={(e) => { if (!outline) e.currentTarget.style.background = '#2563EB'; }}
+      onMouseLeave={(e) => { if (!outline) e.currentTarget.style.background = '#3B82F6'; }}
     >
       {label}
     </button>
   );
 }
 
-function HeroButton({ label, onClick, primary }: { label: string; onClick: () => void; primary?: boolean }) {
+function HeroBtn({ label, onClick, primary }: { label: string; onClick: () => void; primary?: boolean }) {
   return (
     <button
       onClick={onClick}
-      className="rounded-[13px] px-8 py-[15px] text-[15px] font-semibold text-white transition"
-      style={{
-        background: primary ? '#3B82F6' : 'rgba(255,255,255,0.07)',
-        border: primary ? 'none' : '1px solid rgba(255,255,255,0.14)',
-        cursor: 'pointer',
-        fontFamily: 'inherit',
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = primary
-          ? '#2563EB'
-          : 'rgba(255,255,255,0.12)';
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = primary
-          ? '#3B82F6'
-          : 'rgba(255,255,255,0.07)';
-      }}
+      style={{ padding: '15px 32px', borderRadius: 13, fontFamily: 'Inter, sans-serif', fontSize: 15, fontWeight: 600, cursor: 'pointer', background: primary ? '#3B82F6' : 'rgba(255,255,255,0.07)', border: primary ? 'none' : '1px solid rgba(255,255,255,0.14)', color: 'white', transition: 'all 0.15s' }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = primary ? '#2563EB' : 'rgba(255,255,255,0.12)'; if (primary) e.currentTarget.style.boxShadow = '0 8px 28px rgba(59,130,246,0.4)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = primary ? '#3B82F6' : 'rgba(255,255,255,0.07)'; e.currentTarget.style.boxShadow = 'none'; }}
     >
       {label}
     </button>

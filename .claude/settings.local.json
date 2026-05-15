@@ -3,7 +3,13 @@
     "allow": [
       "PowerShell(docker exec docker-web-1 ls /app/apps/web/.next/static/ 2>&1)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(mkdir -p \"c:\\\\Users\\\\abdullahkoroglu\\\\Documents\\\\sources\\\\DIS\\\\RTC\\\\apps\\\\web\\\\src\\\\app\\\\join\\\\[roomId]\")",
+      "Bash(ls \"c:\\\\Users\\\\abdullahkoroglu\\\\.claude\\\\projects\\\\c--Users-abdullahkoroglu-Documents-sources-DIS-RTC\\\\memory\\\\\" 2>/dev/null || echo \"directory empty or not found\")",
+      "Read(//c/Users/abdullahkoroglu/.claude/projects/c--Users-abdullahkoroglu-Documents-sources-DIS-RTC/memory\" 2>/dev/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\abdullahkoroglu\\Documents\\sources\\DIS\\RTC\\apps\\web\\src\\app\\join"
     ]
   }
 }

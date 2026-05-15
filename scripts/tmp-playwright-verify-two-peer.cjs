@@ -9,16 +9,9 @@ async function collectVideoMetrics(page) {
     const videos = Array.from(document.querySelectorAll('video')).map((v, idx) => ({
       track: (() => {
         const track = v.srcObject && v.srcObject.getVideoTracks ? v.srcObject.getVideoTracks()[0] : null;
-        if (!track) {
-          return null;
-        }
+        if (!track) return null;
         const settings = track.getSettings ? track.getSettings() : {};
-        return {
-          muted: track.muted,
-          enabled: track.enabled,
-          readyState: track.readyState,
-          settings,
-        };
+        return { muted: track.muted, enabled: track.enabled, readyState: track.readyState, settings };
       })(),
       idx,
       muted: v.muted,
@@ -42,33 +35,25 @@ async function collectVideoMetrics(page) {
   });
 }
 
-async function joinFromHome(page, roomId, displayName) {
-  // Pre-seed sessionStorage so NameModal doesn't block the room page
-  await page.goto('http://localhost:3009', { waitUntil: 'networkidle', timeout: 120000 });
-  await page.evaluate(({ name }) => {
+async function joinFromLobby(page, roomId, displayName) {
+  // Seed sessionStorage so the room page auto-joins without modal
+  await page.goto(`http://localhost:3009/join/${roomId}`, { waitUntil: 'networkidle', timeout: 120000 });
+
+  // Pre-seed sessionStorage values so join lobby and room page are ready
+  await page.evaluate(({ name, rId }) => {
     sessionStorage.setItem('rtc:displayName', name);
-  }, { name: displayName });
+    sessionStorage.setItem('rtc:micOn', '1');
+    sessionStorage.setItem('rtc:camOn', '1');
+  }, { name: displayName, rId: roomId });
 
-  // Fill name (always visible)
-  await page.fill('#peer-id', displayName);
+  // Fill in the display name field on the join lobby
+  await page.fill('#join-name-input', displayName);
 
-  // Reveal the room-code input by clicking "Kodla Katıl" or "Join with code"
-  await page.getByRole('button', { name: /Kodla Katıl|Join with code/ }).click();
+  // Click "Join Room" — triggers connecting splash then navigates to room
+  await page.getByRole('button', { name: 'Join Room' }).click();
 
-  // Fill room code (revealed after button click)
-  await page.fill('#room-id', roomId);
-
-  // Submit the inline join form
-  await page.getByRole('button', { name: /^Katıl$/ }).click();
-
+  // Wait for URL to reach the room (connecting splash lasts ~1.9s)
   await page.waitForURL(new RegExp(`/room/${roomId}`), { timeout: 30000 });
-
-  // Dismiss device selection modal (wait up to 20s for room to join)
-  try {
-    await page.getByRole('button', { name: 'Katıl' }).click({ timeout: 20000 });
-  } catch {
-    // modal may not appear (already dismissed or feature flag disabled)
-  }
 }
 
 async function main() {
@@ -89,29 +74,19 @@ async function main() {
 
   pageA.on('response', async (response) => {
     if (response.url().includes('/transports') && response.request().method() === 'POST') {
-      try {
-        const data = await response.json();
-        transportResponsesA.push(data);
-      } catch {
-        // ignore parse errors
-      }
+      try { transportResponsesA.push(await response.json()); } catch { /* ignore */ }
     }
   });
 
   pageB.on('response', async (response) => {
     if (response.url().includes('/transports') && response.request().method() === 'POST') {
-      try {
-        const data = await response.json();
-        transportResponsesB.push(data);
-      } catch {
-        // ignore parse errors
-      }
+      try { transportResponsesB.push(await response.json()); } catch { /* ignore */ }
     }
   });
 
   const roomId = `room-${Date.now()}`;
-  await joinFromHome(pageA, roomId, 'peer-a');
-  await joinFromHome(pageB, roomId, 'peer-b');
+  await joinFromLobby(pageA, roomId, 'peer-a');
+  await joinFromLobby(pageB, roomId, 'peer-b');
 
   const deadline = Date.now() + 90000;
   let lastA = null;

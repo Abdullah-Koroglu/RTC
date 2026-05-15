@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { signIn } from 'next-auth/react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+const SS_DISPLAY_NAME = 'rtc:displayName';
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24">
@@ -28,146 +30,118 @@ const InstaIcon = () => (
   </svg>
 );
 
-export default function SignInPage() {
+function SignInContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = searchParams.get('next') ?? '/';
   const [loading, setLoading] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
 
   const handleSignIn = async (provider: string) => {
-    if (provider === 'instagram') return; // coming soon
     setLoading(provider);
-    await signIn(provider, { callbackUrl: '/' });
+    await signIn(provider, { callbackUrl: next });
+  };
+
+  const handleEmailContinue = () => {
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    sessionStorage.setItem(SS_DISPLAY_NAME, trimmed.includes('@') ? (trimmed.split('@')[0] ?? trimmed) : trimmed);
+    router.push(next);
+  };
+
+  const handleAnonymous = () => {
+    router.push(next);
   };
 
   return (
-    <main
-      className="relative flex min-h-screen items-center justify-center overflow-hidden px-4"
-      style={{ background: '#0a0c14' }}
-    >
-      {/* BG glow */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(59,130,246,0.1) 0%, transparent 70%)' }}
-      />
-      {/* Grid */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)',
-          backgroundSize: '56px 56px',
-        }}
-      />
+    <main style={{ minHeight: '100vh', background: '#0a0c14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', padding: 24, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 60% 40% at 50% 0%, rgba(59,130,246,0.1) 0%, transparent 70%)' }} />
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.022, backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)', backgroundSize: '56px 56px' }} />
 
-      <div
-        className="relative z-10 w-full max-w-sm rounded-[22px] px-8 py-9 shadow-2xl"
-        style={{
-          background: 'rgba(22,27,42,0.82)',
-          backdropFilter: 'blur(24px)',
-          border: '1px solid rgba(255,255,255,0.08)',
-        }}
-      >
+      <div style={{ background: 'rgba(22,27,42,0.82)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: '36px 32px', width: '100%', maxWidth: 400, zIndex: 1, boxShadow: '0 32px 80px rgba(0,0,0,0.5)', position: 'relative' }}>
         {/* Logo + heading */}
-        <div className="mb-7 flex flex-col items-center text-center">
-          <Image src="/logo-only.png" width={52} height={52} alt="Link" className="mb-3 object-contain" />
-          <h1 className="text-xl font-bold tracking-tight text-white">Link'e Giriş Yap</h1>
-          <p className="mt-1.5 text-sm" style={{ color: 'rgba(255,255,255,0.38)' }}>
-            Nasıl devam etmek istersin?
-          </p>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <Image src="/logo-only.png" width={52} height={52} alt="Link" style={{ objectFit: 'contain', marginBottom: 12 }} />
+          <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>Sign in to Link</h2>
+          <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, marginTop: 6 }}>Choose how you&apos;d like to continue</p>
         </div>
 
         {/* Social buttons */}
-        <div className="flex flex-col gap-2.5 mb-5">
-          <SocialButton
-            icon={<GoogleIcon />}
-            label={loading === 'google' ? 'Yönlendiriliyor…' : 'Google ile devam et'}
-            onClick={() => void handleSignIn('google')}
-            disabled={loading !== null}
-          />
-          <SocialButton
-            icon={<GitHubIcon />}
-            label={loading === 'github' ? 'Yönlendiriliyor…' : 'GitHub ile devam et'}
-            onClick={() => void handleSignIn('github')}
-            disabled={loading !== null}
-          />
-          <SocialButton
-            icon={<InstaIcon />}
-            label="Instagram ile devam et (Yakında)"
-            gradient
-            disabled
-            onClick={() => {}}
-          />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 20 }}>
+          <SocialBtn icon={<GoogleIcon />} label={loading === 'google' ? 'Redirecting…' : 'Continue with Google'} onClick={() => void handleSignIn('google')} disabled={loading !== null} />
+          <SocialBtn icon={<GitHubIcon />} label={loading === 'github' ? 'Redirecting…' : 'Continue with GitHub'} onClick={() => void handleSignIn('github')} disabled={loading !== null} />
+          <SocialBtn icon={<InstaIcon />} label="Continue with Instagram" gradient disabled onClick={() => {}} />
         </div>
 
         {/* Divider */}
-        <div className="my-5 flex items-center gap-3">
-          <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
-          <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.3)' }}>veya</span>
-          <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.07)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
+          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: 500 }}>or</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
         </div>
 
-        {/* Anonymous continue */}
+        {/* Email */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 16 }}>
+          <input
+            type="email"
+            placeholder="Enter your email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleEmailContinue()}
+            style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: '12px 13px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'Inter, sans-serif', transition: 'border-color 0.15s' }}
+            onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
+            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+          />
+          <button
+            onClick={handleEmailContinue}
+            style={{ width: '100%', padding: '13px', background: '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'background 0.15s' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#2563EB')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#3B82F6')}
+          >
+            Continue with email
+          </button>
+        </div>
+
+        {/* Anonymous */}
         <button
-          onClick={() => router.push('/')}
-          className="w-full rounded-xl py-3 text-sm font-medium transition"
-          style={{
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            color: 'rgba(255,255,255,0.65)',
-            cursor: 'pointer',
-            fontFamily: 'inherit',
-          }}
-          onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.1)')}
-          onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)')}
+          onClick={handleAnonymous}
+          style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 11, color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'background 0.15s' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
         >
-          Giriş yapmadan devam et
+          Continue without signing in
         </button>
 
-        <p className="mt-5 text-center text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.2)' }}>
-          Devam ederek Link&apos;in{' '}
-          <span className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.45)' }}>Kullanım Koşulları</span>
-          {' '}ve{' '}
-          <span className="cursor-pointer" style={{ color: 'rgba(255,255,255,0.45)' }}>Gizlilik Politikası</span>&apos;nı kabul etmiş olursun.
+        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.22)', fontSize: 11, marginTop: 20, lineHeight: 1.6 }}>
+          By continuing you agree to Link&apos;s{' '}
+          <span style={{ color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>Terms</span>
+          {' '}&amp;{' '}
+          <span style={{ color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>Privacy Policy</span>
         </p>
       </div>
     </main>
   );
 }
 
-function SocialButton({
-  icon, label, onClick, gradient, disabled,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  gradient?: boolean;
-  disabled?: boolean;
-}) {
+export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInContent />
+    </Suspense>
+  );
+}
+
+function SocialBtn({ icon, label, onClick, gradient, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; gradient?: boolean; disabled?: boolean }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50"
-      style={{
-        background: gradient
-          ? 'linear-gradient(90deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)'
-          : 'rgba(255,255,255,0.06)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        color: 'rgba(255,255,255,0.88)',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontFamily: 'inherit',
-        textAlign: 'left',
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled && !gradient)
-          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.1)';
-      }}
-      onMouseLeave={(e) => {
-        if (!disabled && !gradient)
-          (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)';
-      }}
+      style={{ width: '100%', padding: '13px 16px', background: gradient ? 'linear-gradient(90deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 12, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Inter, sans-serif', opacity: disabled && !gradient ? 1 : undefined, transition: 'background 0.15s' }}
+      onMouseEnter={(e) => { if (!disabled && !gradient) e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+      onMouseLeave={(e) => { if (!disabled && !gradient) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
     >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center">{icon}</span>
-      <span className="flex-1 text-center">{label}</span>
+      <span style={{ flexShrink: 0, width: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
+      <span style={{ color: 'rgba(255,255,255,0.88)', fontSize: 13, fontWeight: 500, flex: 1, textAlign: 'center' }}>{label}</span>
     </button>
   );
 }
