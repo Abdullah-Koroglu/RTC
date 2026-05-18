@@ -38,6 +38,11 @@ export class WebSocketGateway {
       this.dispatcher.handleDistributedEvent(envelope);
     });
 
+    this.app.get('/debug/rooms/:roomId/participants', async (request) => {
+      const { roomId } = request.params as { roomId: string };
+      return this.rooms.getParticipants(roomId);
+    });
+
     this.app.server.on('upgrade', (request, socket, head) => {
       if (!request.url?.startsWith('/ws')) {
         socket.destroy();

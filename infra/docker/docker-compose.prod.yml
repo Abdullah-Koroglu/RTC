@@ -193,6 +193,7 @@ services:
       NODE_ENV: production
       PORT: 4010
       HOST: 0.0.0.0
+      REDIS_ENABLED: 'true'
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGINS: https://link.akoroglu.com.tr

@@ -126,9 +126,6 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
     video.srcObject = stream;
     video.muted = muted;
 
-    console.log({stream, muted});
-    
-
     const play = () => void video.play().catch(() => undefined);
     const onTrackAdded = () => { video.srcObject = null; video.srcObject = stream; play(); };
     stream.addEventListener('addtrack', onTrackAdded);
