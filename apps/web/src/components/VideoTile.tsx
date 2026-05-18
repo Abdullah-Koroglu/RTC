@@ -41,6 +41,12 @@ const IcMaximize = ({ s = 13, c = 'currentColor' }: { s?: number; c?: string }) 
   </svg>
 );
 
+const IcMinimize = ({ s = 13, c = 'currentColor' }: { s?: number; c?: string }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+  </svg>
+);
+
 function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   const [speaking, setSpeaking] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
@@ -74,7 +80,6 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
         setSpeaking(true);
       } else {
         silenceFrames++;
-        // ~10 frames (~170ms at 60fps) of silence before clearing
         if (silenceFrames > 10) setSpeaking(false);
       }
       rafRef.current = requestAnimationFrame(tick);
@@ -96,15 +101,19 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
 export function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, color }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
+  const [cssFullscreen, setCssFullscreen] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
 
   const tileColor = color ?? colorFromLabel(label);
   const initials = getInitials(label);
-
-  // Speaking detection — disabled for muted local tile (no sense detecting when mic is off)
   const isSpeaking = useSpeaking(stream, isMicMuted === true);
-
   const hasVideoTracks = stream.getVideoTracks().length > 0;
+  const inFullscreen = isNativeFullscreen || cssFullscreen;
+
+  useEffect(() => {
+    setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  }, []);
 
   useEffect(() => {
     if (!videoRef.current || !stream) return;
@@ -124,23 +133,77 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isMi
   }, [stream, muted]);
 
   useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const onChange = () => {
+      const fsEl = document.fullscreenElement ?? (document as any).webkitFullscreenElement;
+      setIsNativeFullscreen(!!fsEl);
+      if (!fsEl) setCssFullscreen(false);
+    };
     document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
+    document.addEventListener('webkitfullscreenchange', onChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('webkitfullscreenchange', onChange);
+    };
   }, []);
 
   const enterFullscreen = () => {
     const el = articleRef.current;
-    if (!el) return;
-    if (isFullscreen) void document.exitFullscreen().catch(() => undefined);
-    else void el.requestFullscreen().catch(() => undefined);
+    const video = videoRef.current;
+
+    // Exit any active fullscreen
+    if (isNativeFullscreen) {
+      void (document.exitFullscreen?.() ?? Promise.resolve()).catch(() => undefined);
+      (document as any).webkitExitFullscreen?.();
+      return;
+    }
+    if (cssFullscreen) {
+      setCssFullscreen(false);
+      return;
+    }
+
+    // Try native fullscreen on the container element
+    if (el?.requestFullscreen) {
+      void el.requestFullscreen().catch(() => {
+        // Native failed — try webkit video fullscreen (iOS Safari)
+        if (video && (video as any).webkitEnterFullscreen) {
+          (video as any).webkitEnterFullscreen();
+        } else {
+          setCssFullscreen(true);
+        }
+      });
+      return;
+    }
+
+    // Try webkit fullscreen on container (some older browsers)
+    if (el && (el as any).webkitRequestFullscreen) {
+      (el as any).webkitRequestFullscreen();
+      return;
+    }
+
+    // Try webkit fullscreen on video element (iOS Safari)
+    if (video && (video as any).webkitEnterFullscreen) {
+      (video as any).webkitEnterFullscreen();
+      return;
+    }
+
+    // CSS-based fullscreen as last resort
+    setCssFullscreen(true);
   };
 
-  return (
-    <article
-      ref={articleRef}
-      onDoubleClick={enterFullscreen}
-      style={{
+  const articleStyle: React.CSSProperties = cssFullscreen
+    ? {
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        borderRadius: 0,
+        border: 'none',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        background: '#141820',
+        cursor: 'pointer',
+      }
+    : {
         position: 'relative',
         width: '100%',
         height: '100%',
@@ -152,7 +215,13 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isMi
         transition: 'border-color 0.15s, box-shadow 0.15s',
         cursor: 'pointer',
         minHeight: 0,
-      }}
+      };
+
+  return (
+    <article
+      ref={articleRef}
+      onDoubleClick={enterFullscreen}
+      style={articleStyle}
     >
       {/* Avatar background */}
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `radial-gradient(ellipse 90% 80% at 50% 25%, ${tileColor}14, #090b12)` }}>
@@ -161,7 +230,6 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isMi
         </div>
       </div>
 
-      {/* Actual video on top of avatar */}
       <video
         ref={videoRef}
         autoPlay
@@ -187,18 +255,30 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isMi
         )}
       </div>
 
-      {/* Fullscreen button on hover */}
+      {/* Fullscreen button — always visible on touch, hover-only on desktop */}
       <button
         type="button"
         onClick={enterFullscreen}
-        title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-        style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 8, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.7)', opacity: 0, transition: 'opacity 0.15s', backdropFilter: 'blur(8px)', zIndex: 1 }}
+        title={inFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+        style={{
+          position: 'absolute', top: 8, right: 8, width: 28, height: 28,
+          borderRadius: 8, background: 'rgba(0,0,0,0.5)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: 'rgba(255,255,255,0.7)',
+          opacity: isTouchDevice ? 1 : 0,
+          transition: 'opacity 0.15s',
+          backdropFilter: 'blur(8px)', zIndex: 1,
+        }}
         className="tile-fs-btn"
       >
-        <IcMaximize s={13} c="rgba(255,255,255,0.7)" />
+        {inFullscreen
+          ? <IcMinimize s={13} c="rgba(255,255,255,0.7)" />
+          : <IcMaximize s={13} c="rgba(255,255,255,0.7)" />
+        }
       </button>
 
-      <style>{`article:hover .tile-fs-btn { opacity: 1 !important; }`}</style>
+      {!isTouchDevice && <style>{`article:hover .tile-fs-btn { opacity: 1 !important; }`}</style>}
     </article>
   );
 }

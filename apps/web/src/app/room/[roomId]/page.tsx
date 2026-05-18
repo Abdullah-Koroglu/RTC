@@ -59,32 +59,32 @@ function ProfileAvatar({ name, photo, onClick }: { name: string; photo?: string 
 }
 
 /* ── Top bar ── */
-function TopBar({ roomId, count, screenSharing, onSettings, onShortcuts, onProfile, userName, userPhoto }: { roomId: string; count: number; screenSharing: boolean; onSettings: () => void; onShortcuts: () => void; onProfile: () => void; userName: string; userPhoto?: string | null | undefined }) {
+function TopBar({ roomId, count, screenSharing, onSettings, onShortcuts, onProfile, userName, userPhoto, isMobile }: { roomId: string; count: number; screenSharing: boolean; onSettings: () => void; onShortcuts: () => void; onProfile: () => void; userName: string; userPhoto?: string | null | undefined; isMobile: boolean }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => { const t = setInterval(() => setElapsed((s) => s + 1), 1000); return () => clearInterval(t); }, []);
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', background: 'rgba(10,12,18,0.9)', backdropFilter: 'blur(20px)', borderBottom: '1px solid rgba(255,255,255,0.06)', zIndex: 100, fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <Image src="/logo-only.png" width={28} height={28} alt="Link" style={{ objectFit: 'contain' }} />
-        <span style={{ color: 'rgba(255,255,255,0.88)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{roomId}</span>
-        {screenSharing && (
-          <span style={{ background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', color: '#3B82F6', padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 500 }}>● Sharing screen</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
+        <Image src="/logo-only.png" width={28} height={28} alt="Link" style={{ objectFit: 'contain', flexShrink: 0 }} />
+        <span style={{ color: 'rgba(255,255,255,0.88)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', maxWidth: isMobile ? 130 : 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{roomId}</span>
+        {screenSharing && !isMobile && (
+          <span style={{ background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', color: '#3B82F6', padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}>● Sharing</span>
         )}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', display: 'block', boxShadow: '0 0 0 2px rgba(34,197,94,0.25)' }} />
-          <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12 }}>{fmt(elapsed)}</span>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22C55E', display: 'block', boxShadow: '0 0 0 2px rgba(34,197,94,0.25)', flexShrink: 0 }} />
+          {!isMobile && <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: 12 }}>{fmt(elapsed)}</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <IcUsers c="rgba(255,255,255,0.38)" />
           <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13 }}>{count}</span>
         </div>
-        <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)' }} />
-        <TopBarBtn onClick={onSettings} icon={<IcGear />} />
-        <TopBarBtn onClick={onShortcuts} icon={<IcHelp />} />
-        <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)' }} />
+        {!isMobile && <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)' }} />}
+        {!isMobile && <TopBarBtn onClick={onSettings} icon={<IcGear />} />}
+        {!isMobile && <TopBarBtn onClick={onShortcuts} icon={<IcHelp />} />}
+        {!isMobile && <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)' }} />}
         <ProfileAvatar name={userName} photo={userPhoto} onClick={onProfile} />
       </div>
     </div>
@@ -133,7 +133,7 @@ function ControlBar({ micOn, camOn, screenShare, chatOpen, breakoutOpen, unread,
 }
 
 /* ── Waiting room ── */
-function WaitingRoom({ roomId }: { roomId: string }) {
+function WaitingRoom({ roomId, isMobile = false }: { roomId: string; isMobile?: boolean }) {
   const [copied, setCopied] = useState(false);
   const link = typeof window !== 'undefined' ? `${window.location.origin}/join/${roomId}` : roomId;
   const copy = () => {
@@ -142,22 +142,22 @@ function WaitingRoom({ roomId }: { roomId: string }) {
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20 }}>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? '0 16px' : 0 }}>
+      <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: isMobile ? 16 : 20, width: '100%', maxWidth: isMobile ? 340 : 'none' }}>
         <div style={{ position: 'relative', marginBottom: 8 }}>
           <div style={{ position: 'absolute', inset: -24, borderRadius: '50%', border: '2px solid rgba(59,130,246,0.3)', animation: 'pulseRing 2.2s ease-out infinite' }} />
           <div style={{ position: 'absolute', inset: -10, borderRadius: '50%', border: '2px solid rgba(59,130,246,0.18)', animation: 'pulseRing 2.2s ease-out 0.6s infinite' }} />
-          <Image src="/logo-only.png" width={76} height={76} alt="Link" style={{ objectFit: 'contain', position: 'relative', zIndex: 1 }} />
+          <Image src="/logo-only.png" width={isMobile ? 56 : 76} height={isMobile ? 56 : 76} alt="Link" style={{ objectFit: 'contain', position: 'relative', zIndex: 1 }} />
         </div>
         <div>
-          <h3 style={{ color: 'white', fontSize: 21, fontWeight: 600, letterSpacing: '-0.02em', margin: '0 0 8px', fontFamily: 'Inter, sans-serif' }}>Waiting for others to join…</h3>
-          <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 14, fontFamily: 'Inter, sans-serif' }}>Share the link below to invite people</p>
+          <h3 style={{ color: 'white', fontSize: isMobile ? 17 : 21, fontWeight: 600, letterSpacing: '-0.02em', margin: '0 0 8px', fontFamily: 'Inter, sans-serif' }}>Waiting for others to join…</h3>
+          <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: isMobile ? 13 : 14, fontFamily: 'Inter, sans-serif' }}>Share the link below to invite people</p>
         </div>
-        <div style={{ background: 'rgba(22,27,42,0.8)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ background: 'rgba(22,27,42,0.8)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: isMobile ? '12px 14px' : '14px 18px', display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14, width: '100%' }}>
           <IcLink c="rgba(255,255,255,0.4)" />
-          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, fontFamily: 'Inter, sans-serif', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{link}</span>
-          <button onClick={copy} style={{ background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.18)', border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(59,130,246,0.3)'}`, borderRadius: 8, padding: '7px 14px', color: copied ? '#22C55E' : '#3B82F6', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.2s', whiteSpace: 'nowrap' }}>
-            {copied ? '✓ Copied!' : 'Copy link'}
+          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: 'Inter, sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{link}</span>
+          <button onClick={copy} style={{ background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.18)', border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(59,130,246,0.3)'}`, borderRadius: 8, padding: isMobile ? '6px 10px' : '7px 14px', color: copied ? '#22C55E' : '#3B82F6', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.2s', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            {copied ? '✓ Copied!' : 'Copy'}
           </button>
         </div>
       </div>
@@ -166,8 +166,35 @@ function WaitingRoom({ roomId }: { roomId: string }) {
 }
 
 /* ── Screen share view ── */
-function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, peerNames }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string> }) {
+function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, peerNames, isMobile }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string>; isMobile: boolean }) {
   const resolve = (key: string) => peerNames.get(key) ?? key;
+  const participants: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean }> = [
+    ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled }] : []),
+    ...remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => ({ key, stream, label: resolve(key), muted: false, mirrored: false })),
+  ];
+
+  if (isMobile) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6, padding: '8px', minHeight: 0 }}>
+        {/* Main screen — fills available space */}
+        <div style={{ flex: 1, background: '#141820', borderRadius: 12, position: 'relative', overflow: 'hidden', border: '1.5px solid rgba(59,130,246,0.4)', minHeight: 0 }}>
+          <VideoTile stream={screenStream} label={`${displayName} (Screen)`} muted />
+          <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 20, padding: '3px 8px', fontSize: 10, color: '#3B82F6', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>● Sharing</div>
+        </div>
+        {/* Horizontal participant strip */}
+        {participants.length > 0 && (
+          <div style={{ height: 88, display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0, paddingBottom: 2 }}>
+            {participants.map((p) => (
+              <div key={p.key} style={{ aspectRatio: '16/9', height: '100%', flexShrink: 0, borderRadius: 8, overflow: 'hidden' }}>
+                <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', gap: 8, padding: '10px', minHeight: 0 }}>
       {/* Main screen */}
@@ -177,14 +204,9 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
       </div>
       {/* Participant strip */}
       <div style={{ width: 176, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flexShrink: 0 }}>
-        {localStream && (
-          <div style={{ aspectRatio: '16/9', flexShrink: 0, borderRadius: 10, overflow: 'hidden' }}>
-            <VideoTile stream={localStream} label={`${displayName} (You)`} muted mirrored isMicMuted={!isAudioEnabled} />
-          </div>
-        )}
-        {remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => (
-          <div key={key} style={{ aspectRatio: '16/9', flexShrink: 0, borderRadius: 10, overflow: 'hidden' }}>
-            <VideoTile stream={stream} label={resolve(key)} />
+        {participants.map((p) => (
+          <div key={p.key} style={{ aspectRatio: '16/9', flexShrink: 0, borderRadius: 10, overflow: 'hidden' }}>
+            <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} />
           </div>
         ))}
       </div>
@@ -193,7 +215,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
 }
 
 /* ── Video grid ── */
-function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, peerNames }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string> }) {
+function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, peerNames, isMobile }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string>; isMobile: boolean }) {
   const resolve = (key: string) => peerNames.get(key) ?? key;
   const tiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored?: boolean; isMicMuted?: boolean }> = [];
   if (localStream) tiles.push({ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled });
@@ -206,13 +228,13 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
   const count = tiles.length;
   if (count === 0) return null;
 
-  const cols = count <= 1 ? 1 : count <= 2 ? 2 : count <= 4 ? 2 : 3;
+  const cols = isMobile ? 1 : count <= 1 ? 1 : count <= 2 ? 2 : count <= 4 ? 2 : 3;
   const rows = Math.ceil(count / cols);
 
   if (count === 1) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <div style={{ width: '100%', maxWidth: 820, aspectRatio: '16/9' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobile ? 8 : 24 }}>
+        <div style={{ width: '100%', maxWidth: isMobile ? '100%' : 820, aspectRatio: '16/9' }}>
           <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} />
         </div>
       </div>
@@ -220,7 +242,7 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
   }
 
   return (
-    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gridTemplateRows: `repeat(${rows},1fr)`, gap: 10, padding: 12, minHeight: 0 }}>
+    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gridTemplateRows: `repeat(${rows},1fr)`, gap: isMobile ? 6 : 10, padding: isMobile ? 8 : 12, minHeight: 0 }}>
       {tiles.map((t) => (
         <VideoTile key={t.key} stream={t.stream} label={t.label} muted={t.muted} mirrored={t.mirrored} isMicMuted={t.isMicMuted} />
       ))}
@@ -379,9 +401,10 @@ interface BreakoutPanelProps {
   onClose: () => void;
   currentRoomId: string;
   onJoin: (roomId: string) => void;
+  isMobile: boolean;
 }
 
-function BreakoutPanel({ open, onClose, currentRoomId, onJoin }: BreakoutPanelProps) {
+function BreakoutPanel({ open, onClose, currentRoomId, onJoin, isMobile }: BreakoutPanelProps) {
   const mainRoomId = getMainRoomId(currentRoomId);
   const isInBreakout = currentRoomId !== mainRoomId;
 
@@ -399,9 +422,9 @@ function BreakoutPanel({ open, onClose, currentRoomId, onJoin }: BreakoutPanelPr
 
   return (
     <div style={{
-      position: 'fixed', top: 0, right: 0, bottom: 0, width: 300,
+      position: 'fixed', top: 0, right: 0, bottom: 0, width: isMobile ? '100%' : 300,
       background: 'rgba(11,13,20,0.95)', backdropFilter: 'blur(28px)',
-      borderLeft: '1px solid rgba(255,255,255,0.07)',
+      borderLeft: isMobile ? 'none' : '1px solid rgba(255,255,255,0.07)',
       display: 'flex', flexDirection: 'column', zIndex: 200,
       transform: open ? 'translateX(0)' : 'translateX(100%)',
       transition: 'transform 0.26s cubic-bezier(0.4,0,0.2,1)',
@@ -500,10 +523,10 @@ function BreakoutPanel({ open, onClose, currentRoomId, onJoin }: BreakoutPanelPr
 
 /* ── Toast ── */
 interface ToastItem { id: number; message: string; ini: string; color: string }
-function ToastStack({ toasts }: { toasts: ToastItem[] }) {
+function ToastStack({ toasts, isMobile = false }: { toasts: ToastItem[]; isMobile?: boolean }) {
   if (toasts.length === 0) return null;
   return (
-    <div style={{ position: 'fixed', bottom: 92, right: 16, display: 'flex', flexDirection: 'column-reverse', gap: 8, zIndex: 300, pointerEvents: 'none' }}>
+    <div style={{ position: 'fixed', bottom: isMobile ? 82 : 92, right: 16, display: 'flex', flexDirection: 'column-reverse', gap: 8, zIndex: 300, pointerEvents: 'none' }}>
       {toasts.map((t) => (
         <div key={t.id} style={{ background: 'rgba(22,27,42,0.95)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif', animation: 'toastIn 0.25s ease both' }}>
           <div style={{ width: 26, height: 26, borderRadius: '50%', background: t.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white', flexShrink: 0 }}>{t.ini}</div>
@@ -534,8 +557,17 @@ export default function RoomPage() {
   const [breakoutOpen, setBreakoutOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [screenShareToast, setScreenShareToast] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
 
   const prevRemoteKeys = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   const canScreenShare = typeof window !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function';
 
@@ -705,8 +737,9 @@ export default function RoomPage() {
   }, [isAudioEnabled, isVideoEnabled]);
 
   const userPhoto = session?.user?.image;
-  const chatW = isChatOpen ? 320 : 0;
-  const breakoutW = breakoutOpen && !isChatOpen ? 300 : 0;
+  // On mobile, panels are full-screen overlays — don't shift the main content
+  const chatW = !isMobile && isChatOpen ? 320 : 0;
+  const breakoutW = !isMobile && breakoutOpen && !isChatOpen ? 300 : 0;
 
   return (
     <div style={{ width: '100vw', height: '100vh', background: '#0a0c14', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
@@ -719,6 +752,7 @@ export default function RoomPage() {
         onProfile={() => router.push('/profile')}
         userName={displayName || peerId}
         userPhoto={userPhoto}
+        isMobile={isMobile}
       />
 
       {/* Main content area */}
@@ -735,24 +769,24 @@ export default function RoomPage() {
 
         {roomState === 'joined' && isWaiting && localStream && (
           <div style={{ flex: 1, display: 'flex', gap: 8, padding: '10px', minHeight: 0, position: 'relative' }}>
-            <WaitingRoom roomId={roomId} />
+            <WaitingRoom roomId={roomId} isMobile={isMobile} />
             {/* PiP self preview */}
-            <div style={{ position: 'absolute', bottom: 16, right: 16, width: 200, aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(59,130,246,0.5)', boxShadow: '0 0 0 3px rgba(59,130,246,0.2)' }}>
+            <div style={{ position: 'absolute', bottom: 16, right: 16, width: isMobile ? 130 : 200, aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(59,130,246,0.5)', boxShadow: '0 0 0 3px rgba(59,130,246,0.2)' }}>
               <VideoTile stream={localStream} label={`${displayName} (You)`} muted mirrored isMicMuted={!isAudioEnabled} />
             </div>
           </div>
         )}
 
         {roomState === 'joined' && isWaiting && !localStream && (
-          <WaitingRoom roomId={roomId} />
+          <WaitingRoom roomId={roomId} isMobile={isMobile} />
         )}
 
         {roomState === 'joined' && !isWaiting && isScreenSharing && screenStream && (
-          <ScreenShareView screenStream={screenStream} localStream={localStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} />
+          <ScreenShareView screenStream={screenStream} localStream={localStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} isMobile={isMobile} />
         )}
 
         {roomState === 'joined' && !isWaiting && !(isScreenSharing && screenStream) && (
-          <VideoGrid localStream={localStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} />
+          <VideoGrid localStream={localStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} isMobile={isMobile} />
         )}
 
         {roomState === 'error' && (
@@ -777,7 +811,7 @@ export default function RoomPage() {
         onChat={() => { setIsChatOpen((v) => { if (!v) { setUnreadCount(0); setBreakoutOpen(false); } return !v; }); }}
         onBreakout={() => { setBreakoutOpen((v) => { if (!v) setIsChatOpen(false); return !v; }); }}
         onLeave={() => void onLeave()}
-        isMobile={false}
+        isMobile={isMobile}
       />
 
       <ChatPanel
@@ -785,6 +819,7 @@ export default function RoomPage() {
         messages={chatMessages}
         onClose={() => setIsChatOpen(false)}
         onSend={sendChatMessage}
+        isMobile={isMobile}
       />
 
       <BreakoutPanel
@@ -792,13 +827,14 @@ export default function RoomPage() {
         onClose={() => setBreakoutOpen(false)}
         currentRoomId={roomId}
         onJoin={(targetId) => void onJoinBreakout(targetId)}
+        isMobile={isMobile}
       />
 
-      <ToastStack toasts={toasts} />
+      <ToastStack toasts={toasts} isMobile={isMobile} />
 
       {/* Screen share toast */}
       {screenShareToast && (
-        <div style={{ position: 'fixed', bottom: 92, left: '50%', transform: 'translateX(-50%)', background: 'rgba(22,27,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 18px', color: 'rgba(255,255,255,0.88)', fontSize: 13, fontFamily: 'Inter, sans-serif', zIndex: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', whiteSpace: 'nowrap' }}>
+        <div style={{ position: 'fixed', bottom: isMobile ? 82 : 92, left: '50%', transform: 'translateX(-50%)', background: 'rgba(22,27,42,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 18px', color: 'rgba(255,255,255,0.88)', fontSize: 13, fontFamily: 'Inter, sans-serif', zIndex: 400, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', whiteSpace: 'nowrap' }}>
           {screenShareToast}
         </div>
       )}
