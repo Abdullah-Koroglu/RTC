@@ -71,6 +71,9 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   // producerId → streamKey for screen producers (cleared when gone so re-share works)
   const screenProducerKeysRef = useRef<Map<string, string>>(new Map());
   const initRef = useRef(false);
+  // Always-current ref so syncRemoteProducers orphan cleanup avoids stale closure
+  const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
+  useEffect(() => { remoteStreamsRef.current = remoteStreams; }, [remoteStreams]);
 
   const signalingOptions = {
     participantId: peerId,
@@ -197,7 +200,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     // participant-left from signaling was missed (e.g. during heartbeat window) but
     // mediasoup already cleaned up the peer after ICE disconnect.
     const livePeerIds = new Set(producers.map((p) => p.peerId));
-    for (const [streamKey, stream] of remoteStreams) {
+    for (const [streamKey, stream] of remoteStreamsRef.current) {
       if (streamKey.includes(':')) continue; // screen keys handled above
       if (streamKey === peerId) continue;    // own stream
       if (livePeerIds.has(streamKey)) continue; // peer still has producers
@@ -398,6 +401,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
             }
           }
           return updated;
+        });
+
+        setPeerNames((prev) => {
+          const next = new Map(prev);
+          next.delete(remotePeerId);
+          return next;
         });
 
         // Clean up producerOwner but leave subscribedProducerIdsRef intact.
