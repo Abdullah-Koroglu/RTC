@@ -295,7 +295,21 @@ export class WebSocketGateway {
         connectionId,
         reason,
       });
+
+      void this.evictMediasoupPeer(item.roomId, item.participant.participantId);
     }
+  }
+
+  private evictMediasoupPeer(roomId: string, peerId: string): Promise<void> {
+    return fetch(`${env.MEDIASOUP_INTERNAL_URL}/rooms/${roomId}/peers/${peerId}`, { method: 'DELETE' })
+      .then((res) => {
+        if (!res.ok) {
+          this.app.log.warn({ roomId, peerId, status: res.status }, 'mediasoup_peer_eviction_failed');
+        }
+      })
+      .catch((err) => {
+        this.app.log.warn({ roomId, peerId, err }, 'mediasoup_peer_eviction_error');
+      });
   }
 
   private startHeartbeat(): void {

@@ -468,6 +468,53 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     };
   }, [signalingClient, roomState, peerId, syncRemoteProducers]);
 
+  // Periodic Redis reconciliation — ghost cleanup + missed event recovery
+  useEffect(() => {
+    if (roomState !== 'joined') return;
+
+    const reconcile = async () => {
+      try {
+        const res = await fetch(`/api/rooms/${roomId}/participants`);
+        if (!res.ok) return;
+        const { participants: fresh } = await res.json() as { participants: ParticipantState[] };
+        const freshMap = new Map(fresh.map((p) => [p.participantId, p]));
+
+        setParticipants(() => {
+          const next = new Map(freshMap);
+          next.delete(peerId);
+          return next;
+        });
+
+        setRemoteStreams((prev) => {
+          const ghostKeys = [...prev.keys()].filter((key) => {
+            const basePeer = key.split(':')[0]!;
+            return basePeer !== peerId && !freshMap.has(basePeer);
+          });
+          if (ghostKeys.length === 0) return prev;
+          const updated = new Map(prev);
+          for (const key of ghostKeys) {
+            updated.get(key)?.getTracks().forEach((t) => t.stop());
+            updated.delete(key);
+            const basePeer = key.split(':')[0]!;
+            producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
+              if (ownerPeerId === basePeer) {
+                subscribedProducerIdsRef.current.delete(producerId);
+                producerOwnerRef.current.delete(producerId);
+                screenProducerKeysRef.current.delete(producerId);
+              }
+            });
+          }
+          return updated;
+        });
+      } catch {
+        // best-effort, ignore errors
+      }
+    };
+
+    const id = setInterval(() => { void reconcile(); }, 7000);
+    return () => clearInterval(id);
+  }, [roomState, roomId, peerId]);
+
   // Periodic producer discovery
   useEffect(() => {
     if (roomState !== 'joined') return;

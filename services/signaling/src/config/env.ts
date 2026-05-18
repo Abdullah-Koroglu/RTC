@@ -16,6 +16,7 @@ const envSchema = z.object({
   HEARTBEAT_TIMEOUT_MS: z.coerce.number().int().positive().default(4000),
   MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(262144),
   SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(12000),
+  MEDIASOUP_INTERNAL_URL: z.string().url().default('http://localhost:4020'),
 });
 
 export type Env = z.infer<typeof envSchema>;
