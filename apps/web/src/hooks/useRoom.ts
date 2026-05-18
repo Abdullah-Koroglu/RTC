@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MediasoupClient } from '@repo/rtc-sdk';
+import { MediasoupClient, type ParticipantState } from '@repo/rtc-sdk';
 import { useSignaling } from './useSignaling';
 import { getClientEnv } from '@/lib/env';
 
 export type RoomState = 'idle' | 'joining' | 'joined' | 'error';
+
+export type { ParticipantState };
 
 export interface ChatMessage {
   id: string;
@@ -30,7 +32,8 @@ export interface UseRoomReturn {
   chatMessages: ChatMessage[];
   screenStream: MediaStream | null;
   isScreenSharing: boolean;
-  peerNames: Map<string, string>;
+  /** participantId → ParticipantState (includes displayName, cameraEnabled, micEnabled) */
+  participants: Map<string, ParticipantState>;
   joinRoom: () => Promise<void>;
   leaveRoom: () => Promise<void>;
   publishMedia: (constraints?: MediaStreamConstraints) => Promise<MediaStream | null>;
@@ -60,15 +63,14 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [peerNames, setPeerNames] = useState<Map<string, string>>(new Map());
+  const [participants, setParticipants] = useState<Map<string, ParticipantState>>(new Map());
 
   const mediaClientRef = useRef<MediasoupClient | null>(null);
   // producerId → peerId
   const producerOwnerRef = useRef<Map<string, string>>(new Map());
   // producerIds that have been subscribed — intentionally NOT cleared on participant-left
-  // (prevents re-subscription to still-alive producers of a departed peer)
   const subscribedProducerIdsRef = useRef<Set<string>>(new Set());
-  // producerId → streamKey for screen producers (cleared when gone so re-share works)
+  // producerId → streamKey for screen producers
   const screenProducerKeysRef = useRef<Map<string, string>>(new Map());
   const initRef = useRef(false);
   // Always-current ref so syncRemoteProducers orphan cleanup avoids stale closure
@@ -112,9 +114,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
 
       await initializeMediasoup();
-      // joinRoom returns the current peer names map from the signaling server
-      const initialPeerNames = await signalingClient.joinRoom(roomId, displayName ?? peerId);
-      setPeerNames(new Map(Object.entries(initialPeerNames)));
+      const initialParticipants = await signalingClient.joinRoom(roomId, displayName ?? peerId);
+      setParticipants(new Map(initialParticipants.map((p) => [p.participantId, p])));
       setRoomState('joined');
     } catch (err) {
       const joinError = err instanceof Error ? err : new Error('Failed to join room');
@@ -122,7 +123,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       setRoomState('error');
       throw joinError;
     }
-  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId]);
+  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId]);
 
   const leaveRoom = useCallback(async () => {
     try {
@@ -154,6 +155,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       subscribedProducerIdsRef.current.clear();
       screenProducerKeysRef.current.clear();
       setChatMessages([]);
+      setParticipants(new Map());
       setIsScreenSharing(false);
       setRoomState('idle');
     } catch (err) {
@@ -176,10 +178,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     const liveProducerIds = new Set(producers.map((p) => p.producerId));
     const livePeerIds = new Set(producers.map((p) => p.peerId));
 
-    // Collect all removals to apply in a single state update at the end
     const keysToRemove: string[] = [];
 
-    // --- Screen share cleanup ---
     for (const [screenProducerId, streamKey] of screenProducerKeysRef.current) {
       if (!liveProducerIds.has(screenProducerId)) {
         const gone = remoteStreamsRef.current.get(streamKey);
@@ -191,12 +191,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
     }
 
-    // --- Camera/mic orphan cleanup ---
-    // Handles participant-left events missed during heartbeat window.
     for (const [streamKey, stream] of remoteStreamsRef.current) {
-      if (streamKey.includes(':')) continue; // screen keys handled above
-      if (streamKey === peerId) continue;    // own stream
-      if (livePeerIds.has(streamKey)) continue; // peer still has producers
+      if (streamKey.includes(':')) continue;
+      if (streamKey === peerId) continue;
+      if (livePeerIds.has(streamKey)) continue;
 
       stream.getTracks().forEach((t) => t.stop());
       keysToRemove.push(streamKey);
@@ -210,7 +208,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
     }
 
-    // Apply all removals in one state update
     if (keysToRemove.length > 0) {
       setRemoteStreams((prev) => {
         const updated = new Map(prev);
@@ -219,8 +216,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       });
     }
 
-    // --- Subscribe to new producers ---
-    // Collect all new streams, then apply in one state update
     const additions = new Map<string, MediaStream>();
 
     for (const producer of producers) {
@@ -256,7 +251,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       if (isScreen) screenProducerKeysRef.current.set(producer.producerId, streamKey);
     }
 
-    // Single state update for all new subscriptions
     if (additions.size > 0) {
       setRemoteStreams((prev) => {
         const updated = new Map(prev);
@@ -303,18 +297,24 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const setAudioEnabled = useCallback((enabled: boolean) => {
     try {
       mediaClientRef.current?.setAudioEnabled(enabled);
+      if (signalingClient && roomState === 'joined') {
+        void signalingClient.sendParticipantStateUpdate(roomId, { micEnabled: enabled }).catch(() => undefined);
+      }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to toggle audio'));
     }
-  }, []);
+  }, [signalingClient, roomId, roomState]);
 
   const setVideoEnabled = useCallback((enabled: boolean) => {
     try {
       mediaClientRef.current?.setVideoEnabled(enabled);
+      if (signalingClient && roomState === 'joined') {
+        void signalingClient.sendParticipantStateUpdate(roomId, { cameraEnabled: enabled }).catch(() => undefined);
+      }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to toggle video'));
     }
-  }, []);
+  }, [signalingClient, roomId, roomState]);
 
   const startScreenShare = useCallback(async (): Promise<MediaStream | null> => {
     try {
@@ -324,7 +324,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       setIsScreenSharing(true);
       return stream;
     } catch (err) {
-      if ((err as Error).name === 'NotAllowedError') return null; // user cancelled
+      if ((err as Error).name === 'NotAllowedError') return null;
       console.error('Screen share failed', { roomId, peerId, error: err });
       setError(err instanceof Error ? err : new Error('Failed to start screen share'));
       return null;
@@ -357,7 +357,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         console.error('Failed to send chat message', err);
       });
     },
-    [signalingClient, roomId, peerId],
+    [signalingClient, roomId, peerId, displayName],
   );
 
   // Signaling event listeners
@@ -369,11 +369,17 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('room.participant-joined', ({ participantId: remotePeerId, displayName: remoteDisplayName }) => {
         if (remotePeerId !== peerId) {
-          // Store the display name if provided by the signaling server
           if (remoteDisplayName) {
-            setPeerNames((prev) => {
+            setParticipants((prev) => {
               const next = new Map(prev);
-              next.set(remotePeerId, remoteDisplayName);
+              const existing = next.get(remotePeerId);
+              next.set(remotePeerId, {
+                participantId: remotePeerId,
+                displayName: remoteDisplayName,
+                cameraEnabled: existing?.cameraEnabled ?? false,
+                micEnabled: existing?.micEnabled ?? false,
+                joinedAt: existing?.joinedAt ?? new Date().toISOString(),
+              });
               return next;
             });
           }
@@ -385,11 +391,33 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     );
 
     listeners.push(
+      signalingClient.on('room.participant-state-updated', ({ participantId: remotePeerId, displayName: remoteDisplayName, cameraEnabled, micEnabled }) => {
+        if (remotePeerId !== peerId) {
+          setParticipants((prev) => {
+            const next = new Map(prev);
+            const existing = next.get(remotePeerId);
+            next.set(remotePeerId, {
+              participantId: remotePeerId,
+              displayName: remoteDisplayName,
+              cameraEnabled,
+              micEnabled,
+              joinedAt: existing?.joinedAt ?? new Date().toISOString(),
+            });
+            return next;
+          });
+        }
+      }),
+    );
+
+    listeners.push(
       signalingClient.on('name.announce', ({ participantId, displayName: remoteName }) => {
         if (participantId !== peerId) {
-          setPeerNames((prev) => {
+          setParticipants((prev) => {
             const next = new Map(prev);
-            next.set(participantId, remoteName);
+            const existing = next.get(participantId);
+            if (existing) {
+              next.set(participantId, { ...existing, displayName: remoteName });
+            }
             return next;
           });
         }
@@ -400,7 +428,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       signalingClient.on('room.participant-left', ({ participantId: remotePeerId }) => {
         if (remotePeerId === peerId) return;
 
-        // Remove all streams keyed to this peer (camera + screen)
         setRemoteStreams((prev) => {
           const updated = new Map(prev);
           for (const [key, stream] of updated) {
@@ -412,16 +439,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           return updated;
         });
 
-        setPeerNames((prev) => {
+        setParticipants((prev) => {
           const next = new Map(prev);
           next.delete(remotePeerId);
           return next;
         });
 
-        // Clean up producerOwner but leave subscribedProducerIdsRef intact.
-        // Keeping stale IDs prevents the periodic sync from re-subscribing
-        // to producers that are still alive on mediasoup right after the peer
-        // disconnects. New sessions always generate fresh producer UUIDs.
         const producerIdsToDelete: string[] = [];
         producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
           if (ownerPeerId === remotePeerId) producerIdsToDelete.push(producerId);
@@ -432,7 +455,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
     listeners.push(
       signalingClient.on('chat.received', ({ participantId, text, ts, senderName }) => {
-        // Skip echo — own message is already added optimistically in sendChatMessage
         if (participantId === peerId) return;
         setChatMessages((prev) => [
           ...prev,
@@ -457,13 +479,9 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     };
 
     runSync();
-    // 5s interval — signaling events handle real-time cases; this is a missed-event fallback
     const intervalId = setInterval(runSync, 5000);
     return () => clearInterval(intervalId);
   }, [roomState, syncRemoteProducers]);
-
-  // Note: beforeunload cleanup is handled by MediasoupClient.unloadHandler
-  // (fetch DELETE keepalive:true) — no need for a duplicate handler here.
 
   // Auto-join
   useEffect(() => {
@@ -481,7 +499,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     chatMessages,
     screenStream,
     isScreenSharing,
-    peerNames,
+    participants,
     joinRoom,
     leaveRoom,
     publishMedia,

@@ -121,10 +121,13 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   }, []);
 
   useEffect(() => {
-    if (!videoRef.current || !stream) return;
+    if (!videoRef.current || !stream) {return;}
     const video = videoRef.current;
     video.srcObject = stream;
     video.muted = muted;
+
+    console.log({stream, muted});
+    
 
     const play = () => void video.play().catch(() => undefined);
     const onTrackAdded = () => { video.srcObject = null; video.srcObject = stream; play(); };
@@ -221,6 +224,7 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
         cursor: 'pointer',
         minHeight: 0,
       };
+
 
   return (
     <article

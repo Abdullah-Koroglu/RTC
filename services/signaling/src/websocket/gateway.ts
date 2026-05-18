@@ -20,14 +20,18 @@ interface RecoverySnapshot {
 export class WebSocketGateway {
   private readonly nodeId = process.env.HOSTNAME ?? `node-${randomUUID()}`;
   private readonly connections = new ConnectionManager();
-  private readonly rooms = new RoomManager();
   private readonly pubsub = new RedisPubSub();
-  private readonly dispatcher = new EventDispatcher(this.nodeId, this.connections, this.rooms, this.pubsub);
+  private readonly dispatcher: EventDispatcher;
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: env.MAX_PAYLOAD_BYTES });
   private readonly recovery = new Map<string, RecoverySnapshot>();
   private heartbeatTimer?: NodeJS.Timeout;
 
-  constructor(private readonly app: FastifyInstance) {}
+  constructor(
+    private readonly app: FastifyInstance,
+    private readonly rooms: RoomManager,
+  ) {
+    this.dispatcher = new EventDispatcher(this.nodeId, this.connections, this.rooms, this.pubsub);
+  }
 
   async start(): Promise<void> {
     await this.pubsub.connect(async (envelope) => {
@@ -105,6 +109,10 @@ export class WebSocketGateway {
 
     socket.on('pong', () => {
       this.connections.markAlive(conn.connectionId);
+      // Refresh Redis TTL for all rooms this connection is in
+      for (const { roomId, participantId: pid } of this.rooms.getConnectionRooms(conn.connectionId)) {
+        void this.rooms.refreshTtl(roomId, pid);
+      }
     });
 
     socket.on('message', (raw) => {
@@ -134,11 +142,11 @@ export class WebSocketGateway {
     });
 
     socket.on('close', () => {
-      this.handleDisconnect(conn.connectionId, 'disconnect');
+      void this.handleDisconnect(conn.connectionId, 'disconnect');
     });
 
     socket.on('error', () => {
-      this.handleDisconnect(conn.connectionId, 'disconnect');
+      void this.handleDisconnect(conn.connectionId, 'disconnect');
     });
 
     this.app.log.info(
@@ -175,7 +183,7 @@ export class WebSocketGateway {
       }
 
       for (const roomId of snapshot.roomIds) {
-        this.rooms.join(roomId, {
+        await this.rooms.join(roomId, {
           participantId: conn.participantId,
           connectionId: conn.connectionId,
         });
@@ -193,10 +201,10 @@ export class WebSocketGateway {
 
     if (event.type === 'room.join') {
       if (!this.rooms.has(event.roomId, conn.connectionId)) {
-        this.rooms.join(event.roomId, {
+        await this.rooms.join(event.roomId, {
           participantId: conn.participantId,
           connectionId: conn.connectionId,
-          displayName: event.displayName,
+          ...(event.displayName !== undefined ? { displayName: event.displayName } : {}),
         });
         conn.rooms.add(event.roomId);
 
@@ -205,18 +213,17 @@ export class WebSocketGateway {
           roomId: event.roomId,
           participantId: conn.participantId,
           connectionId: conn.connectionId,
-          displayName: event.displayName,
+          ...(event.displayName !== undefined ? { displayName: event.displayName } : {}),
         });
       }
 
-      // Return current room peer names so the new joiner immediately knows everyone's name
-      const peerNames = this.rooms.getPeerNames(event.roomId);
-      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true, data: { peerNames } });
+      const participants = await this.rooms.getParticipants(event.roomId);
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true, data: { participants } });
       return;
     }
 
     if (event.type === 'room.leave') {
-      const left = this.rooms.leave(event.roomId, conn.connectionId);
+      const left = await this.rooms.leave(event.roomId, conn.connectionId);
       conn.rooms.delete(event.roomId);
 
       if (left) {
@@ -226,6 +233,29 @@ export class WebSocketGateway {
           participantId: conn.participantId,
           connectionId: conn.connectionId,
           reason: 'leave',
+        });
+      }
+
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      return;
+    }
+
+    if (event.type === 'participant.state-update') {
+      const patch: Partial<{ displayName: string; cameraEnabled: boolean; micEnabled: boolean }> = {};
+      if (event.cameraEnabled !== undefined) patch.cameraEnabled = event.cameraEnabled;
+      if (event.micEnabled !== undefined) patch.micEnabled = event.micEnabled;
+      if (event.displayName !== undefined) patch.displayName = event.displayName;
+
+      const updated = await this.rooms.updateState(event.roomId, conn.participantId, patch);
+
+      if (updated) {
+        await this.dispatcher.publishRoomEvent(event.roomId, {
+          type: 'room.participant-state-updated',
+          roomId: event.roomId,
+          participantId: conn.participantId,
+          displayName: updated.displayName,
+          cameraEnabled: updated.cameraEnabled,
+          micEnabled: updated.micEnabled,
         });
       }
 
@@ -243,13 +273,13 @@ export class WebSocketGateway {
     this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
   }
 
-  private handleDisconnect(connectionId: string, reason: 'disconnect' | 'timeout'): void {
+  private async handleDisconnect(connectionId: string, reason: 'disconnect' | 'timeout'): Promise<void> {
     const conn = this.connections.remove(connectionId);
     if (!conn) {
       return;
     }
 
-    const left = this.rooms.leaveAll(connectionId);
+    const left = await this.rooms.leaveAll(connectionId);
     this.storeRecovery(conn.recoveryToken, conn.participantId, Array.from(conn.rooms));
 
     for (const item of left) {
@@ -268,7 +298,7 @@ export class WebSocketGateway {
       this.connections.forEach((conn) => {
         if (!conn.isAlive && Date.now() - conn.lastHeartbeatAt > env.HEARTBEAT_TIMEOUT_MS) {
           conn.socket.terminate();
-          this.handleDisconnect(conn.connectionId, 'timeout');
+          void this.handleDisconnect(conn.connectionId, 'timeout');
           return;
         }
 

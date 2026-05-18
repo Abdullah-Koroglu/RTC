@@ -166,11 +166,14 @@ function WaitingRoom({ roomId, isMobile = false }: { roomId: string; isMobile?: 
 }
 
 /* ── Screen share view ── */
-function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, peerNames, isMobile, localPhoto }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string>; isMobile: boolean; localPhoto?: string | null | undefined }) {
-  const resolve = (key: string) => peerNames.get(key) ?? key;
-  const participants: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean; photo?: string | null }> = [
+function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, participants, isMobile, localPhoto }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
+  const resolve = (key: string) => participants.get(key)?.displayName ?? key;
+  const stripTiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean; photo?: string | null }> = [
     ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, photo: localPhoto ?? null }] : []),
-    ...remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => ({ key, stream, label: resolve(key), muted: false, mirrored: false })),
+    ...remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => {
+      const pState = participants.get(key);
+      return { key, stream, label: resolve(key), muted: false, mirrored: false, ...(pState ? { isMicMuted: !pState.micEnabled } : {}) };
+    }),
   ];
 
   if (isMobile) {
@@ -182,9 +185,9 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
           <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 20, padding: '3px 8px', fontSize: 10, color: '#3B82F6', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>● Sharing</div>
         </div>
         {/* Horizontal participant strip */}
-        {participants.length > 0 && (
+        {stripTiles.length > 0 && (
           <div style={{ height: 88, display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0, paddingBottom: 2 }}>
-            {participants.map((p) => (
+            {stripTiles.map((p) => (
               <div key={p.key} style={{ aspectRatio: '16/9', height: '100%', flexShrink: 0, borderRadius: 8, overflow: 'hidden' }}>
                 <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} photo={p.photo} />
               </div>
@@ -204,7 +207,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
       </div>
       {/* Participant strip */}
       <div style={{ width: 176, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flexShrink: 0 }}>
-        {participants.map((p) => (
+        {stripTiles.map((p) => (
           <div key={p.key} style={{ aspectRatio: '16/9', flexShrink: 0, borderRadius: 10, overflow: 'hidden' }}>
             <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} />
           </div>
@@ -215,18 +218,28 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
 }
 
 /* ── Video grid ── */
-function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, peerNames, isMobile, localPhoto }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; peerNames: Map<string, string>; isMobile: boolean; localPhoto?: string | null | undefined }) {
-  const resolve = (key: string) => peerNames.get(key) ?? key;
+function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, participants, isMobile, localPhoto }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
+  const resolve = (key: string) => participants.get(key)?.displayName ?? key;
   const tiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored?: boolean; isMicMuted?: boolean; photo?: string | null }> = [];
   if (localStream) tiles.push({ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, photo: localPhoto ?? null });
   if (screenStream) tiles.push({ key: '__screen', stream: screenStream, label: `${displayName} (Screen)`, muted: true });
   for (const [key, stream] of remoteEntries) {
     const isScreen = key.endsWith(':screen');
     const basePeer = isScreen ? key.replace(':screen', '') : key;
-    tiles.push({ key, stream, label: isScreen ? `${resolve(basePeer)} (Screen)` : resolve(key), muted: false });
+    const pState = participants.get(basePeer);
+    tiles.push({
+      key,
+      stream,
+      label: isScreen ? `${resolve(basePeer)} (Screen)` : resolve(key),
+      muted: false,
+      ...(!isScreen && pState ? { isMicMuted: !pState.micEnabled } : {}),
+    });
   }
   const count = tiles.length;
   if (count === 0) return null;
+
+  console.log({tiles});
+  
 
   const cols = isMobile ? 1 : count <= 1 ? 1 : count <= 2 ? 2 : count <= 4 ? 2 : 3;
   const rows = Math.ceil(count / cols);
@@ -588,7 +601,7 @@ export default function RoomPage() {
     chatMessages,
     screenStream,
     isScreenSharing,
-    peerNames,
+    participants,
     leaveRoom,
     publishMedia,
     unpublishMedia,
@@ -601,7 +614,7 @@ export default function RoomPage() {
 
   // Helper: resolve display name from stream key
   const resolveLabel = (key: string, suffix?: string): string => {
-    const base = peerNames.get(key) ?? key;
+    const base = participants.get(key)?.displayName ?? key;
     return suffix ? `${base} (${suffix})` : base;
   };
 
@@ -659,14 +672,14 @@ export default function RoomPage() {
     const currentKeys = new Set(remoteStreams.keys());
     for (const key of currentKeys) {
       if (!prevRemoteKeys.current.has(key) && !key.endsWith(':screen')) {
-        const name = peerNames.get(key) ?? key;
+        const name = participants.get(key)?.displayName ?? key;
         const ini = name.split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
         addToast(`${name} joined`, ini, colorFor(key));
       }
     }
     for (const key of prevRemoteKeys.current) {
       if (!currentKeys.has(key) && !key.endsWith(':screen')) {
-        const name = peerNames.get(key) ?? key;
+        const name = participants.get(key)?.displayName ?? key;
         const ini = name.split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
         addToast(`${name} left`, ini, '#6B7280');
       }
@@ -790,11 +803,11 @@ export default function RoomPage() {
         )}
 
         {roomState === 'joined' && !isWaiting && isScreenSharing && screenStream && (
-          <ScreenShareView screenStream={screenStream} localStream={localStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} isMobile={isMobile} localPhoto={userPhoto} />
+          <ScreenShareView screenStream={screenStream} localStream={localStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} participants={participants} isMobile={isMobile} localPhoto={userPhoto} />
         )}
 
         {roomState === 'joined' && !isWaiting && !(isScreenSharing && screenStream) && (
-          <VideoGrid localStream={localStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} peerNames={peerNames} isMobile={isMobile} localPhoto={userPhoto} />
+          <VideoGrid localStream={localStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} participants={participants} isMobile={isMobile} localPhoto={userPhoto} />
         )}
 
         {roomState === 'error' && (

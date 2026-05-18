@@ -14,10 +14,8 @@ export class EventDispatcher {
   ) {}
 
   broadcastToRoom(roomId: string, event: OutboundEvent): void {
-    const participants = this.rooms.getParticipants(roomId);
-
-    for (const participant of participants) {
-      const conn = this.connections.getById(participant.connectionId);
+    for (const connectionId of this.rooms.getConnectionIds(roomId)) {
+      const conn = this.connections.getById(connectionId);
       if (!conn || conn.socket.readyState !== conn.socket.OPEN) {
         continue;
       }
@@ -27,7 +25,7 @@ export class EventDispatcher {
 
   async publishRoomEvent(
     roomId: string,
-    event: Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'signal.relay' }>,
+    event: Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' }>,
   ): Promise<void> {
     const envelope: DistributedRoomEvent = {
       eventId: randomUUID(),

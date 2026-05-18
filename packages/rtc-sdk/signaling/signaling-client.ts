@@ -2,6 +2,14 @@ import { TypedEventEmitter } from '../events/event-emitter';
 
 export type SignalKind = 'offer' | 'answer' | 'ice-candidate' | 'chat' | 'name-announce';
 
+export interface ParticipantState {
+  participantId: string;
+  displayName: string;
+  cameraEnabled: boolean;
+  micEnabled: boolean;
+  joinedAt: string;
+}
+
 // Inbound event types from signaling server
 export type InboundSignalingEvent =
   | { type: 'ack'; requestId?: string; ok: true; data?: unknown }
@@ -19,6 +27,14 @@ export type InboundSignalingEvent =
       participantId: string;
       connectionId: string;
       reason: 'leave' | 'disconnect' | 'timeout';
+    }
+  | {
+      type: 'room.participant-state-updated';
+      roomId: string;
+      participantId: string;
+      displayName: string;
+      cameraEnabled: boolean;
+      micEnabled: boolean;
     }
   | {
       type: 'signal.relay';
@@ -53,7 +69,15 @@ export type OutboundSignalingEvent =
       requestId?: string;
     }
   | { type: 'session.reconnect'; recoveryToken: string; requestId?: string }
-  | { type: 'ping'; ts?: number };
+  | { type: 'ping'; ts?: number }
+  | {
+      type: 'participant.state-update';
+      roomId: string;
+      cameraEnabled?: boolean;
+      micEnabled?: boolean;
+      displayName?: string;
+      requestId?: string;
+    };
 
 export interface ChatMessagePayload {
   text: string;
@@ -69,6 +93,7 @@ export interface SignalingClientEventMap {
   'room.left': { roomId: string };
   'room.participant-joined': { roomId: string; participantId: string; connectionId: string; displayName?: string | undefined };
   'room.participant-left': { roomId: string; participantId: string; reason: string };
+  'room.participant-state-updated': { roomId: string; participantId: string; displayName: string; cameraEnabled: boolean; micEnabled: boolean };
   'signal.received': {
     roomId: string;
     participantId: string;
@@ -127,7 +152,7 @@ export class SignalingClient {
         const urlObj = new URL(this.options.url);
         urlObj.searchParams.set('token', this.options.token);
         const connectionUrl = urlObj.toString();
-        
+
         const WebSocketCtor = this.options.WebSocketConstructor || (typeof WebSocket !== 'undefined' ? WebSocket : undefined);
         if (!WebSocketCtor) {
           throw new Error('WebSocket is not available in this environment');
@@ -190,7 +215,7 @@ export class SignalingClient {
     this.socket = null;
   }
 
-  async joinRoom(roomId: string, displayName?: string): Promise<Record<string, string>> {
+  async joinRoom(roomId: string, displayName?: string): Promise<ParticipantState[]> {
     const requestId = this.generateRequestId();
     const message: OutboundSignalingEvent = {
       type: 'room.join',
@@ -209,8 +234,8 @@ export class SignalingClient {
       this.pendingRequests.set(requestId, {
         resolve: (data: unknown) => {
           this.emitter.emit('room.joined', { roomId });
-          const ackData = data as { peerNames?: Record<string, string> } | undefined;
-          resolve(ackData?.peerNames ?? {});
+          const ackData = data as { participants?: ParticipantState[] } | undefined;
+          resolve(ackData?.participants ?? []);
         },
         reject,
         timeout,
@@ -238,6 +263,33 @@ export class SignalingClient {
           this.emitter.emit('room.left', { roomId });
           resolve();
         },
+        reject,
+        timeout,
+      });
+    });
+  }
+
+  async sendParticipantStateUpdate(
+    roomId: string,
+    patch: { cameraEnabled?: boolean; micEnabled?: boolean; displayName?: string },
+  ): Promise<void> {
+    const requestId = this.generateRequestId();
+    const message: OutboundSignalingEvent = {
+      type: 'participant.state-update',
+      roomId,
+      ...patch,
+      requestId,
+    };
+    await this.sendMessage(message);
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        resolve(); // non-critical, don't reject
+      }, 3000);
+
+      this.pendingRequests.set(requestId, {
+        resolve: () => { clearTimeout(timeout); resolve(); },
         reject,
         timeout,
       });
@@ -330,7 +382,6 @@ export class SignalingClient {
         reject(new Error('Ping timeout'));
       }, 5000);
 
-      // Store a special handler for ping/pong
       (this as any).__pingTimeout = timeout;
       (this as any).__pingResolve = resolve;
     });
@@ -396,6 +447,14 @@ export class SignalingClient {
           roomId: message.roomId,
           participantId: message.participantId,
           reason: message.reason,
+        });
+      } else if (message.type === 'room.participant-state-updated') {
+        this.emitter.emit('room.participant-state-updated', {
+          roomId: message.roomId,
+          participantId: message.participantId,
+          displayName: message.displayName,
+          cameraEnabled: message.cameraEnabled,
+          micEnabled: message.micEnabled,
         });
       } else if (message.type === 'signal.relay') {
         if (message.payload.kind === 'chat') {

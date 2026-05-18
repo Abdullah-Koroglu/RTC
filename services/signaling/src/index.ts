@@ -3,10 +3,15 @@ import { env } from '@/config/env';
 import { buildApp } from '@/core/app';
 import { registerLifecycle } from '@/core/lifecycle';
 import { WebSocketGateway } from '@/websocket/gateway';
+import { RoomManager } from '@/rooms/room-manager';
+import { RedisManager } from '@/redis/manager';
 
 async function bootstrap(): Promise<void> {
   const app = buildApp();
-  const gateway = new WebSocketGateway(app);
+
+  const redisClient = env.REDIS_ENABLED ? RedisManager.getInstance().getPooledClient('rooms') : null;
+  const roomManager = new RoomManager(redisClient);
+  const gateway = new WebSocketGateway(app, roomManager);
 
   await gateway.start();
   registerLifecycle(app, gateway);
@@ -17,6 +22,11 @@ async function bootstrap(): Promise<void> {
     await gateway.handlePeerGoneNotification(body.roomId, body.peerId);
     return reply.send({ ok: true });
   });
+
+  // REST endpoint to query current room participants
+  app.get<{ Params: { roomId: string } }>('/rooms/:roomId/participants', async (request) => ({
+    participants: await roomManager.getParticipants(request.params.roomId),
+  }));
 
   await app.listen({
     host: env.HOST,

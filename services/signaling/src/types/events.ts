@@ -35,12 +35,22 @@ export const clientPingSchema = z.object({
   ts: z.number().optional(),
 });
 
+export const clientParticipantStateUpdateSchema = z.object({
+  type: z.literal('participant.state-update'),
+  roomId: z.string().min(1),
+  cameraEnabled: z.boolean().optional(),
+  micEnabled: z.boolean().optional(),
+  displayName: z.string().optional(),
+  requestId: z.string().optional(),
+});
+
 export const inboundEventSchema = z.discriminatedUnion('type', [
   clientJoinRoomSchema,
   clientLeaveRoomSchema,
   clientSignalSchema,
   clientReconnectSchema,
   clientPingSchema,
+  clientParticipantStateUpdateSchema,
 ]);
 
 export type InboundEvent = z.infer<typeof inboundEventSchema>;
@@ -73,6 +83,14 @@ export type OutboundEvent =
       reason: 'leave' | 'disconnect' | 'timeout';
     }
   | {
+      type: 'room.participant-state-updated';
+      roomId: string;
+      participantId: string;
+      displayName: string;
+      cameraEnabled: boolean;
+      micEnabled: boolean;
+    }
+  | {
       type: 'signal.relay';
       roomId: string;
       participantId: string;
@@ -98,7 +116,7 @@ export const redisEnvelopeSchema = z.object({
   emittedAt: z.string(),
   roomId: z.string().min(1),
   sourceNodeId: z.string().min(1),
-  event: z.custom<Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'signal.relay' }>>(),
+  event: z.custom<Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' }>>(),
 });
 
 export type RedisEnvelope = z.infer<typeof redisEnvelopeSchema>;
