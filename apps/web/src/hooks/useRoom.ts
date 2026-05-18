@@ -174,20 +174,17 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     }
 
     const liveProducerIds = new Set(producers.map((p) => p.producerId));
+    const livePeerIds = new Set(producers.map((p) => p.peerId));
+
+    // Collect all removals to apply in a single state update at the end
+    const keysToRemove: string[] = [];
 
     // --- Screen share cleanup ---
-    // Screen producers are removed when they disappear (peer stopped sharing).
     for (const [screenProducerId, streamKey] of screenProducerKeysRef.current) {
       if (!liveProducerIds.has(screenProducerId)) {
-        setRemoteStreams((prev) => {
-          const updated = new Map(prev);
-          const gone = updated.get(streamKey);
-          if (gone) {
-            gone.getTracks().forEach((t) => t.stop());
-            updated.delete(streamKey);
-          }
-          return updated;
-        });
+        const gone = remoteStreamsRef.current.get(streamKey);
+        if (gone) gone.getTracks().forEach((t) => t.stop());
+        keysToRemove.push(streamKey);
         subscribedProducerIdsRef.current.delete(screenProducerId);
         producerOwnerRef.current.delete(screenProducerId);
         screenProducerKeysRef.current.delete(screenProducerId);
@@ -195,23 +192,14 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     }
 
     // --- Camera/mic orphan cleanup ---
-    // If a peer's camera/mic stream exists in remoteStreams but they no longer have
-    // any live producers in mediasoup, remove the stream. This handles the case where
-    // participant-left from signaling was missed (e.g. during heartbeat window) but
-    // mediasoup already cleaned up the peer after ICE disconnect.
-    const livePeerIds = new Set(producers.map((p) => p.peerId));
+    // Handles participant-left events missed during heartbeat window.
     for (const [streamKey, stream] of remoteStreamsRef.current) {
       if (streamKey.includes(':')) continue; // screen keys handled above
       if (streamKey === peerId) continue;    // own stream
       if (livePeerIds.has(streamKey)) continue; // peer still has producers
 
       stream.getTracks().forEach((t) => t.stop());
-      setRemoteStreams((prev) => {
-        const updated = new Map(prev);
-        updated.delete(streamKey);
-        return updated;
-      });
-      // Clear this peer's entries so they can re-subscribe if they rejoin
+      keysToRemove.push(streamKey);
       const ownedIds: string[] = [];
       producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
         if (ownerPeerId === streamKey) ownedIds.push(producerId);
@@ -221,6 +209,19 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         producerOwnerRef.current.delete(pid);
       }
     }
+
+    // Apply all removals in one state update
+    if (keysToRemove.length > 0) {
+      setRemoteStreams((prev) => {
+        const updated = new Map(prev);
+        for (const key of keysToRemove) updated.delete(key);
+        return updated;
+      });
+    }
+
+    // --- Subscribe to new producers ---
+    // Collect all new streams, then apply in one state update
+    const additions = new Map<string, MediaStream>();
 
     for (const producer of producers) {
       if (producer.peerId === peerId || subscribedProducerIdsRef.current.has(producer.producerId)) {
@@ -244,25 +245,33 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       const isScreen = producer.appData?.mediaTag === 'screen';
       const streamKey = isScreen ? `${producer.peerId}:screen` : producer.peerId;
 
-      setRemoteStreams((prev) => {
-        const updated = new Map(prev);
-        const target = updated.get(streamKey) ?? new MediaStream();
-        for (const track of stream.getTracks()) {
-          if (!target.getTracks().some((existingTrack) => existingTrack.id === track.id)) {
-            target.addTrack(track);
-          }
-        }
-        updated.set(streamKey, target);
-        return updated;
-      });
+      const target = additions.get(streamKey) ?? new MediaStream();
+      for (const track of stream.getTracks()) {
+        if (!target.getTracks().some((t) => t.id === track.id)) target.addTrack(track);
+      }
+      additions.set(streamKey, target);
 
       producerOwnerRef.current.set(producer.producerId, producer.peerId);
       subscribedProducerIdsRef.current.add(producer.producerId);
+      if (isScreen) screenProducerKeysRef.current.set(producer.producerId, streamKey);
+    }
 
-      // Track screen producers separately so we can clean them up when they stop
-      if (isScreen) {
-        screenProducerKeysRef.current.set(producer.producerId, streamKey);
-      }
+    // Single state update for all new subscriptions
+    if (additions.size > 0) {
+      setRemoteStreams((prev) => {
+        const updated = new Map(prev);
+        for (const [key, stream] of additions) {
+          const existing = updated.get(key);
+          if (existing) {
+            for (const track of stream.getTracks()) {
+              if (!existing.getTracks().some((t) => t.id === track.id)) existing.addTrack(track);
+            }
+          } else {
+            updated.set(key, stream);
+          }
+        }
+        return updated;
+      });
     }
   }, [peerId, roomState]);
 
@@ -448,7 +457,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     };
 
     runSync();
-    const intervalId = setInterval(runSync, 1500);
+    // 5s interval — signaling events handle real-time cases; this is a missed-event fallback
+    const intervalId = setInterval(runSync, 5000);
     return () => clearInterval(intervalId);
   }, [roomState, syncRemoteProducers]);
 

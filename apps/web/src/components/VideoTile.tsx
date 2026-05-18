@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 
 export interface VideoTileProps {
   stream: MediaStream;
@@ -9,6 +9,7 @@ export interface VideoTileProps {
   mirrored?: boolean | undefined;
   isMicMuted?: boolean | undefined;
   color?: string | undefined;
+  photo?: string | null | undefined;
 }
 
 const TILE_COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#EF4444'];
@@ -50,7 +51,7 @@ const IcMinimize = ({ s = 13, c = 'currentColor' }: { s?: number; c?: string }) 
 function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   const [speaking, setSpeaking] = useState(false);
   const ctxRef = useRef<AudioContext | null>(null);
-  const rafRef = useRef<number>(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (disabled) { setSpeaking(false); return; }
@@ -64,8 +65,9 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
     ctxRef.current = ctx;
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = 0.5;
+    // Smaller fftSize = less CPU per analysis tick
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.6;
     source.connect(analyser);
 
     const data = new Uint8Array(analyser.frequencyBinCount);
@@ -73,21 +75,24 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
 
     const tick = () => {
       analyser.getByteFrequencyData(data);
-      const sum = data.reduce((a, b) => a + b, 0);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i]!;
       const avg = sum / data.length;
       if (avg > 12) {
         silenceFrames = 0;
         setSpeaking(true);
       } else {
         silenceFrames++;
-        if (silenceFrames > 10) setSpeaking(false);
+        // ~8 ticks × 80ms = ~640ms of silence before clearing
+        if (silenceFrames > 8) setSpeaking(false);
       }
-      rafRef.current = requestAnimationFrame(tick);
+      // 80ms interval ≈ 12.5 fps — enough for speaking indicator, 5× less CPU than 60fps RAF
+      timerRef.current = setTimeout(tick, 80);
     };
-    rafRef.current = requestAnimationFrame(tick);
+    timerRef.current = setTimeout(tick, 80);
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
       source.disconnect();
       void ctx.close().catch(() => undefined);
       ctxRef.current = null;
@@ -98,7 +103,7 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   return speaking;
 }
 
-export function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, color }: VideoTileProps) {
+export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, color, photo }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
@@ -223,11 +228,20 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isMi
       onDoubleClick={enterFullscreen}
       style={articleStyle}
     >
-      {/* Avatar background */}
+      {/* Avatar background — shown when camera is off */}
       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `radial-gradient(ellipse 90% 80% at 50% 25%, ${tileColor}14, #090b12)` }}>
-        <div style={{ width: 72, height: 72, borderRadius: '50%', background: `linear-gradient(140deg,${tileColor}ee,${tileColor}77)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, color: 'white', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.02em', flexShrink: 0, boxShadow: `0 0 30px ${tileColor}33` }}>
-          {initials}
-        </div>
+        {photo ? (
+          // Profile photo avatar
+          <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, boxShadow: `0 0 30px ${tileColor}44, 0 0 0 3px ${tileColor}55` }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photo} alt={label} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+        ) : (
+          // Initials avatar
+          <div style={{ width: 72, height: 72, borderRadius: '50%', background: `linear-gradient(140deg,${tileColor}ee,${tileColor}77)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 700, color: 'white', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.02em', flexShrink: 0, boxShadow: `0 0 30px ${tileColor}33` }}>
+            {initials}
+          </div>
+        )}
       </div>
 
       <video
@@ -281,4 +295,4 @@ export function VideoTile({ stream, label, muted = false, mirrored = false, isMi
       {!isTouchDevice && <style>{`article:hover .tile-fs-btn { opacity: 1 !important; }`}</style>}
     </article>
   );
-}
+});
