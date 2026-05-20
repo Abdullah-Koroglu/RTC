@@ -166,7 +166,7 @@ function WaitingRoom({ roomId, isMobile = false }: { roomId: string; isMobile?: 
 }
 
 /* ── Screen share view ── */
-function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, participants, isMobile, localPhoto }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
+function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, isVideoEnabled, participants, isMobile, localPhoto }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
   const resolve = (key: string) => participants.get(key)?.displayName ?? key;
   const stripTiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean; cameraEnabled?: boolean; photo?: string | null }> = [
     ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, photo: localPhoto ?? null }] : []),
