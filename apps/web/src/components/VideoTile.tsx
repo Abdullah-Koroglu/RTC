@@ -8,6 +8,7 @@ export interface VideoTileProps {
   muted?: boolean | undefined;
   mirrored?: boolean | undefined;
   isMicMuted?: boolean | undefined;
+  cameraEnabled?: boolean | undefined;
   color?: string | undefined;
   photo?: string | null | undefined;
 }
@@ -103,7 +104,7 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   return speaking;
 }
 
-export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, color, photo }: VideoTileProps) {
+export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, color, photo }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
@@ -113,7 +114,7 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   const tileColor = color ?? colorFromLabel(label);
   const initials = getInitials(label);
   const isSpeaking = useSpeaking(stream, isMicMuted === true);
-  const hasVideoTracks = stream.getVideoTracks().length > 0;
+  const hasVideoTracks = stream.getVideoTracks().length > 0 && cameraEnabled !== false;
   const inFullscreen = isNativeFullscreen || cssFullscreen;
 
   useEffect(() => {

@@ -168,11 +168,11 @@ function WaitingRoom({ roomId, isMobile = false }: { roomId: string; isMobile?: 
 /* ── Screen share view ── */
 function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, participants, isMobile, localPhoto }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
   const resolve = (key: string) => participants.get(key)?.displayName ?? key;
-  const stripTiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean; photo?: string | null }> = [
-    ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, photo: localPhoto ?? null }] : []),
+  const stripTiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean; cameraEnabled?: boolean; photo?: string | null }> = [
+    ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, photo: localPhoto ?? null }] : []),
     ...remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => {
       const pState = participants.get(key);
-      return { key, stream, label: resolve(key), muted: false, mirrored: false, ...(pState ? { isMicMuted: !pState.micEnabled } : {}) };
+      return { key, stream, label: resolve(key), muted: false, mirrored: false, ...(pState ? { isMicMuted: !pState.micEnabled, cameraEnabled: pState.cameraEnabled } : {}) };
     }),
   ];
 
@@ -189,7 +189,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
           <div style={{ height: 88, display: 'flex', gap: 6, overflowX: 'auto', flexShrink: 0, paddingBottom: 2 }}>
             {stripTiles.map((p) => (
               <div key={p.key} style={{ aspectRatio: '16/9', height: '100%', flexShrink: 0, borderRadius: 8, overflow: 'hidden' }}>
-                <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} photo={p.photo} />
+                <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} cameraEnabled={p.cameraEnabled} photo={p.photo} />
               </div>
             ))}
           </div>
@@ -209,7 +209,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
       <div style={{ width: 176, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flexShrink: 0 }}>
         {stripTiles.map((p) => (
           <div key={p.key} style={{ aspectRatio: '16/9', flexShrink: 0, borderRadius: 10, overflow: 'hidden' }}>
-            <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} />
+            <VideoTile stream={p.stream} label={p.label} muted={p.muted} mirrored={p.mirrored} isMicMuted={p.isMicMuted} cameraEnabled={p.cameraEnabled} />
           </div>
         ))}
       </div>
@@ -218,10 +218,10 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
 }
 
 /* ── Video grid ── */
-function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, participants, isMobile, localPhoto }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
+function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, isVideoEnabled, participants, isMobile, localPhoto }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
   const resolve = (key: string) => participants.get(key)?.displayName ?? key;
-  const tiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored?: boolean; isMicMuted?: boolean; photo?: string | null }> = [];
-  if (localStream) tiles.push({ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, photo: localPhoto ?? null });
+  const tiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored?: boolean; isMicMuted?: boolean; cameraEnabled?: boolean; photo?: string | null }> = [];
+  if (localStream) tiles.push({ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, photo: localPhoto ?? null });
   if (screenStream) tiles.push({ key: '__screen', stream: screenStream, label: `${displayName} (Screen)`, muted: true });
   for (const [key, stream] of remoteEntries) {
     const isScreen = key.endsWith(':screen');
@@ -232,7 +232,7 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
       stream,
       label: isScreen ? `${resolve(basePeer)} (Screen)` : resolve(key),
       muted: false,
-      ...(!isScreen && pState ? { isMicMuted: !pState.micEnabled } : {}),
+      ...(!isScreen && pState ? { isMicMuted: !pState.micEnabled, cameraEnabled: pState.cameraEnabled } : {}),
     });
   }
   const count = tiles.length;
@@ -249,14 +249,14 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
       // Mobile: fill entire available area (no aspect-ratio constraint)
       return (
         <div style={{ flex: 1, padding: 8, minHeight: 0 }}>
-          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} photo={tiles[0]!.photo} />
+          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} cameraEnabled={tiles[0]!.cameraEnabled} photo={tiles[0]!.photo} />
         </div>
       );
     }
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ width: '100%', maxWidth: 820, aspectRatio: '16/9' }}>
-          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} photo={tiles[0]!.photo} />
+          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} cameraEnabled={tiles[0]!.cameraEnabled} photo={tiles[0]!.photo} />
         </div>
       </div>
     );
@@ -265,7 +265,7 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
   return (
     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gridTemplateRows: `repeat(${rows},1fr)`, gap: isMobile ? 6 : 10, padding: isMobile ? 8 : 12, minHeight: 0 }}>
       {tiles.map((t) => (
-        <VideoTile key={t.key} stream={t.stream} label={t.label} muted={t.muted} mirrored={t.mirrored} isMicMuted={t.isMicMuted} photo={t.photo} />
+        <VideoTile key={t.key} stream={t.stream} label={t.label} muted={t.muted} mirrored={t.mirrored} isMicMuted={t.isMicMuted} cameraEnabled={t.cameraEnabled} photo={t.photo} />
       ))}
     </div>
   );
@@ -640,20 +640,26 @@ export default function RoomPage() {
     setIsAudioEnabled(micOn);
     setIsVideoEnabled(camOn);
 
+    // Always request both tracks regardless of on/off state so toggling works
+    // after joining. The initial enabled state is applied after publish.
     const constraints: MediaStreamConstraints = {
-      video: camOn ? (videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true) : false,
-      audio: micOn ? (audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true) : false,
+      video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
+      audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true,
+    };
+
+    const applyInitialState = () => {
+      setAudioEnabled(micOn);
+      setVideoEnabled(camOn);
     };
 
     void publishMedia(constraints).then((stream) => {
-      if (stream) setHasPublished(true);
+      if (stream) { setHasPublished(true); applyInitialState(); }
     }).catch(() => {
-      // fallback: try without device constraints
-      void publishMedia({ video: camOn, audio: micOn }).then((stream) => {
-        if (stream) setHasPublished(true);
+      void publishMedia({ video: true, audio: true }).then((stream) => {
+        if (stream) { setHasPublished(true); applyInitialState(); }
       });
     });
-  }, [roomState, hasPublished, publishMedia]);
+  }, [roomState, hasPublished, publishMedia, setAudioEnabled, setVideoEnabled]);
 
   // Toast on remote peer join/leave
   const addToast = (message: string, ini: string, color: string) => {
