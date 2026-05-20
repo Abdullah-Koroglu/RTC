@@ -103,6 +103,19 @@ export type OutboundEvent =
       };
     }
   | {
+      type: 'producer.new';
+      roomId: string;
+      peerId: string;
+      producerId: string;
+      kind: 'audio' | 'video';
+    }
+  | {
+      type: 'producer.closed';
+      roomId: string;
+      peerId: string;
+      producerId: string;
+    }
+  | {
       type: 'pong';
       ts: number;
     }
@@ -118,7 +131,7 @@ export const redisEnvelopeSchema = z.object({
   emittedAt: z.string(),
   roomId: z.string().min(1),
   sourceNodeId: z.string().min(1),
-  event: z.custom<Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' }>>(),
+  event: z.custom<Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' | 'producer.new' | 'producer.closed' }>>(),
 });
 
 export type RedisEnvelope = z.infer<typeof redisEnvelopeSchema>;

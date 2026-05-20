@@ -47,6 +47,8 @@ export type InboundSignalingEvent =
         targetParticipantId?: string;
       };
     }
+  | { type: 'producer.new'; roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' }
+  | { type: 'producer.closed'; roomId: string; peerId: string; producerId: string }
   | { type: 'pong'; ts: number }
   | {
       type: 'session.ready';
@@ -104,6 +106,8 @@ export interface SignalingClientEventMap {
   'chat.received': { roomId: string; participantId: string } & ChatMessagePayload;
   'name.announce': { roomId: string; participantId: string; displayName: string };
   'photo.announce': { roomId: string; participantId: string; photo: string | null };
+  'producer.new': { roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' };
+  'producer.closed': { roomId: string; peerId: string; producerId: string };
   'reconnect.scheduled': { delayMs: number; attempt: number };
   'reconnect.succeeded': { attempt: number };
   'reconnect.failed': { attempt: number; error: Error };
@@ -134,8 +138,8 @@ export class SignalingClient {
   private connectionId: string | null = null;
   private participantId: string;
   private reconnectAttempt = 0;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private pendingRequests = new Map<string, { resolve: (data: unknown) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }>();
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingRequests = new Map<string, { resolve: (data: unknown) => void; reject: (error: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
   private requestIdCounter = 0;
 
   constructor(private readonly options: SignalingClientOptions) {
@@ -477,6 +481,19 @@ export class SignalingClient {
           displayName: message.displayName,
           cameraEnabled: message.cameraEnabled,
           micEnabled: message.micEnabled,
+        });
+      } else if (message.type === 'producer.new') {
+        this.emitter.emit('producer.new', {
+          roomId: message.roomId,
+          peerId: message.peerId,
+          producerId: message.producerId,
+          kind: message.kind,
+        });
+      } else if (message.type === 'producer.closed') {
+        this.emitter.emit('producer.closed', {
+          roomId: message.roomId,
+          peerId: message.peerId,
+          producerId: message.producerId,
         });
       } else if (message.type === 'signal.relay') {
         if (message.payload.kind === 'chat') {

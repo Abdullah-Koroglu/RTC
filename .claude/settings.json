@@ -3,7 +3,25 @@
     "allow": [
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\abdullahkoroglu\\\\Documents\\\\sources\\\\DIS\\\\RTC\\\\apps\\\\web\\\\src\" -Recurse -File)",
       "Bash(Select-Object -First 20)",
-      "PowerShell(head -30)"
+      "PowerShell(head -30)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\abdullahkoroglu\\\\Documents\\\\sources\\\\DIS\\\\RTC\" -Recurse -Depth 2)",
+      "Bash(Select-Object FullName)",
+      "Bash(npx --version)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\abdullahkoroglu\\\\Documents\\\\sources\\\\DIS\\\\RTC\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(npx playwright *)",
+      "Bash(node test-mobile.mjs)",
+      "Bash(npm install *)",
+      "Bash(pnpm add *)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "Bash(node test-debug.cjs)",
+      "Bash(pnpm --filter @repo/signaling typecheck)",
+      "Bash(pnpm --filter @repo/mediasoup typecheck)",
+      "Bash(pnpm --filter @repo/web typecheck)",
+      "Bash(pnpm install *)",
+      "Bash(npx expo *)",
+      "Bash(node test-mobile.cjs)"
     ]
   }
 }

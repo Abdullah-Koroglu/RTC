@@ -47,5 +47,8 @@
     "*.{json,md,yml,yaml}": [
       "pnpm exec prettier --write"
     ]
+  },
+  "dependencies": {
+    "playwright": "^1.60.0"
   }
 }

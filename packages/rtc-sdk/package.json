@@ -8,6 +8,7 @@
     "./peer": "./peer/peer-connection-manager.ts",
     "./media": "./media/media-manager.ts",
     "./signaling": "./signaling/signaling-bridge.ts",
+    "./signaling-client": "./signaling/signaling-client.ts",
     "./events": "./events/types.ts",
     "./transports": "./transports/types.ts",
     "./transports/browser-websocket": "./transports/browser-websocket-transport.ts"

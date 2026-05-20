@@ -23,6 +23,27 @@ async function bootstrap(): Promise<void> {
     return reply.send({ ok: true });
   });
 
+  app.post('/internal/producer-new', async (request, reply) => {
+    const body = z.object({
+      roomId: z.string().min(1),
+      peerId: z.string().min(1),
+      producerId: z.string().min(1),
+      kind: z.enum(['audio', 'video']),
+    }).parse(request.body);
+    await gateway.handleProducerNew(body.roomId, body.peerId, body.producerId, body.kind);
+    return reply.send({ ok: true });
+  });
+
+  app.post('/internal/producer-closed', async (request, reply) => {
+    const body = z.object({
+      roomId: z.string().min(1),
+      peerId: z.string().min(1),
+      producerId: z.string().min(1),
+    }).parse(request.body);
+    await gateway.handleProducerClosed(body.roomId, body.peerId, body.producerId);
+    return reply.send({ ok: true });
+  });
+
   // REST endpoint to query current room participants
   app.get<{ Params: { roomId: string } }>('/rooms/:roomId/participants', async (request) => ({
     participants: await roomManager.getParticipants(request.params.roomId),

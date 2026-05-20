@@ -69,6 +69,25 @@ export class WebSocketGateway {
     });
   }
 
+  async handleProducerNew(roomId: string, peerId: string, producerId: string, kind: 'audio' | 'video'): Promise<void> {
+    await this.dispatcher.publishRoomEvent(roomId, {
+      type: 'producer.new',
+      roomId,
+      peerId,
+      producerId,
+      kind,
+    });
+  }
+
+  async handleProducerClosed(roomId: string, peerId: string, producerId: string): Promise<void> {
+    await this.dispatcher.publishRoomEvent(roomId, {
+      type: 'producer.closed',
+      roomId,
+      peerId,
+      producerId,
+    });
+  }
+
   async close(): Promise<void> {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);

@@ -8,6 +8,8 @@ const clientSchema = z.object({
 
 const serverSchema = z.object({
   SIGNALING_INTERNAL_URL: z.string().url().default('http://localhost:4010'),
+  API_INTERNAL_URL: z.string().url().default('http://localhost:4000'),
+  INTERNAL_API_SECRET: z.string().min(32).default('dev_internal_secret_change_me_12345'),
 });
 
 export function getClientEnv() {
@@ -21,5 +23,7 @@ export function getClientEnv() {
 export function getServerEnv() {
   return serverSchema.parse({
     SIGNALING_INTERNAL_URL: process.env.SIGNALING_INTERNAL_URL,
+    API_INTERNAL_URL: process.env.API_INTERNAL_URL,
+    INTERNAL_API_SECRET: process.env.INTERNAL_API_SECRET,
   });
 }

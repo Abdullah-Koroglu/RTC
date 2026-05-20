@@ -1,25 +1,32 @@
 import type { FastifyInstance } from 'fastify';
-import type { CreateUserBody } from '@/modules/users/schema';
 
-export async function createUser(app: FastifyInstance, input: CreateUserBody): Promise<{
+export interface UserRow {
   id: string;
   email: string;
   displayName: string;
-}> {
-  const result = await app.db.query<{
-    id: string;
-    email: string;
-    display_name: string;
-  }>(
-    'SELECT gen_random_uuid()::text as id, $1::text as email, $2::text as display_name',
-    [input.email, input.displayName],
+  avatarUrl: string | null;
+}
+
+type DbUser = { id: string; email: string; display_name: string; avatar_url: string | null };
+
+function mapUser(row: DbUser): UserRow {
+  return { id: row.id, email: row.email, displayName: row.display_name, avatarUrl: row.avatar_url };
+}
+
+export async function getUserById(app: FastifyInstance, id: string): Promise<UserRow | null> {
+  const result = await app.db.query<DbUser>(
+    'SELECT id, email, display_name, avatar_url FROM users WHERE id = $1',
+    [id],
   );
-
   const row = result.rows[0];
+  return row ? mapUser(row) : null;
+}
 
-  return {
-    id: row.id,
-    email: row.email,
-    displayName: row.display_name,
-  };
+export async function getUserByEmail(app: FastifyInstance, email: string): Promise<UserRow | null> {
+  const result = await app.db.query<DbUser>(
+    'SELECT id, email, display_name, avatar_url FROM users WHERE email = $1',
+    [email],
+  );
+  const row = result.rows[0];
+  return row ? mapUser(row) : null;
 }

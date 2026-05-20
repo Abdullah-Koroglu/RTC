@@ -14,6 +14,7 @@ const envSchema = z.object({
   REDIS_URL: z.string().url().default('redis://127.0.0.1:6379'),
   DATABASE_ENABLED: z.coerce.boolean().default(false),
   DATABASE_URL: z.string().url().default('postgresql://postgres:postgres@127.0.0.1:5432/rtc'),
+  INTERNAL_API_SECRET: z.string().min(32).default('dev_internal_secret_change_me_12345'),
   TURN_REALM: z.string().min(1).default('turn.local.rtc'),
   TURN_SHARED_SECRET: z.string().min(1).default('rtc-local-turn-secret'),
   TURN_TTL_SECONDS: z.coerce.number().int().positive().default(3600),

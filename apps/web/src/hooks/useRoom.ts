@@ -523,6 +523,22 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     );
 
     listeners.push(
+      signalingClient.on('producer.new', ({ peerId: remotePeerId }) => {
+        if (remotePeerId !== peerId) {
+          void syncRemoteProducers().catch(() => undefined);
+        }
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('producer.closed', ({ peerId: remotePeerId }) => {
+        if (remotePeerId !== peerId) {
+          void syncRemoteProducers().catch(() => undefined);
+        }
+      }),
+    );
+
+    listeners.push(
       signalingClient.on('chat.received', ({ participantId, text, ts, senderName }) => {
         if (participantId === peerId) return;
         setChatMessages((prev) => [
@@ -543,14 +559,14 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     void signalingClient.sendPhotoAnnounce(roomId, photo ?? null).catch(() => undefined);
   }, [roomState, signalingClient, roomId, photo]);
 
-  // Periodic Redis reconciliation — ghost cleanup + missed event recovery
+  // Fallback reconciliation — ghost cleanup for abrupt disconnects only
   useEffect(() => {
     if (roomState !== 'joined') return;
-    const id = setInterval(() => { void reconcile(); }, 7000);
+    const id = setInterval(() => { void reconcile(); }, 30000);
     return () => clearInterval(id);
   }, [roomState, reconcile]);
 
-  // Periodic producer discovery
+  // Fallback producer discovery — real-time via producer.new/closed events, this is a safety net
   useEffect(() => {
     if (roomState !== 'joined') return;
 
@@ -561,7 +577,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     };
 
     runSync();
-    const intervalId = setInterval(runSync, 5000);
+    const intervalId = setInterval(runSync, 30000);
     return () => clearInterval(intervalId);
   }, [roomState, syncRemoteProducers]);
 

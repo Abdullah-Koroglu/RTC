@@ -5,8 +5,6 @@ import { signIn } from 'next-auth/react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-const SS_DISPLAY_NAME = 'rtc:displayName';
-
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24">
     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -22,35 +20,51 @@ const GitHubIcon = () => (
   </svg>
 );
 
-const InstaIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="2" width="20" height="20" rx="5"/>
-    <circle cx="12" cy="12" r="5"/>
-    <circle cx="17.5" cy="6.5" r="1.2" fill="white" stroke="none"/>
-  </svg>
-);
-
 function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next') ?? '/';
   const [loading, setLoading] = useState<string | null>(null);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
 
-  const handleSignIn = async (provider: string) => {
+  const handleOAuth = async (provider: string) => {
     setLoading(provider);
     await signIn(provider, { callbackUrl: next });
   };
 
-  const handleEmailContinue = () => {
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    sessionStorage.setItem(SS_DISPLAY_NAME, trimmed.includes('@') ? (trimmed.split('@')[0] ?? trimmed) : trimmed);
-    router.push(next);
+  const handleCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !password) return;
+    setLoading('credentials');
+    setError('');
+    const result = await signIn('credentials', {
+      email: email.trim(),
+      password,
+      redirect: false,
+    });
+    setLoading(null);
+    if (result?.error) {
+      setError('Email veya şifre hatalı.');
+    } else {
+      router.push(next);
+    }
   };
 
-  const handleAnonymous = () => {
-    router.push(next);
+  const handleAnonymous = () => router.push(next);
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    boxSizing: 'border-box',
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    borderRadius: 11,
+    padding: '12px 13px',
+    color: 'white',
+    fontSize: 14,
+    outline: 'none',
+    fontFamily: 'Inter, sans-serif',
   };
 
   return (
@@ -59,64 +73,73 @@ function SignInContent() {
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.022, backgroundImage: 'linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)', backgroundSize: '56px 56px' }} />
 
       <div style={{ background: 'rgba(22,27,42,0.82)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: '36px 32px', width: '100%', maxWidth: 400, zIndex: 1, boxShadow: '0 32px 80px rgba(0,0,0,0.5)', position: 'relative' }}>
-        {/* Logo + heading */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <Image src="/logo-only.png" width={52} height={52} alt="Link" style={{ objectFit: 'contain', marginBottom: 12 }} />
           <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>Sign in to Link</h2>
           <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, marginTop: 6 }}>Choose how you&apos;d like to continue</p>
         </div>
 
-        {/* Social buttons */}
+        {/* OAuth */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 20 }}>
-          <SocialBtn icon={<GoogleIcon />} label={loading === 'google' ? 'Redirecting…' : 'Continue with Google'} onClick={() => void handleSignIn('google')} disabled={loading !== null} />
-          <SocialBtn icon={<GitHubIcon />} label={loading === 'github' ? 'Redirecting…' : 'Continue with GitHub'} onClick={() => void handleSignIn('github')} disabled={loading !== null} />
-          <SocialBtn icon={<InstaIcon />} label="Continue with Instagram" gradient disabled onClick={() => {}} />
+          <SocialBtn icon={<GoogleIcon />} label={loading === 'google' ? 'Redirecting…' : 'Continue with Google'} onClick={() => void handleOAuth('google')} disabled={loading !== null} />
+          <SocialBtn icon={<GitHubIcon />} label={loading === 'github' ? 'Redirecting…' : 'Continue with GitHub'} onClick={() => void handleOAuth('github')} disabled={loading !== null} />
         </div>
 
-        {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
-          <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: 500 }}>or</span>
-          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
-        </div>
+        <Divider />
 
-        {/* Email */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 16 }}>
+        {/* Email + Password */}
+        <form onSubmit={(e) => void handleCredentials(e)} style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 16 }}>
           <input
             type="email"
-            placeholder="Enter your email"
+            placeholder="Email adresi"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleEmailContinue()}
-            style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, padding: '12px 13px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'Inter, sans-serif', transition: 'border-color 0.15s' }}
+            required
+            style={inputStyle}
             onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
             onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
           />
+          <input
+            type="password"
+            placeholder="Şifre"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={inputStyle}
+            onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
+            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+          />
+          {error && (
+            <p style={{ color: '#f87171', fontSize: 13, margin: 0, textAlign: 'center' }}>{error}</p>
+          )}
           <button
-            onClick={handleEmailContinue}
-            style={{ width: '100%', padding: '13px', background: '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'background 0.15s' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#2563EB')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#3B82F6')}
+            type="submit"
+            disabled={loading !== null}
+            style={{ width: '100%', padding: '13px', background: loading === 'credentials' ? '#1d4ed8' : '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontSize: 14, fontWeight: 600, cursor: loading !== null ? 'not-allowed' : 'pointer', fontFamily: 'Inter, sans-serif', opacity: loading !== null ? 0.7 : 1 }}
           >
-            Continue with email
+            {loading === 'credentials' ? 'Giriş yapılıyor…' : 'Giriş yap'}
           </button>
-        </div>
+        </form>
 
-        {/* Anonymous */}
+        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.38)', fontSize: 13, marginBottom: 16 }}>
+          Hesabın yok mu?{' '}
+          <a href="/auth/register" style={{ color: '#60a5fa', textDecoration: 'none', fontWeight: 500 }}>Kayıt ol</a>
+        </p>
+
         <button
           onClick={handleAnonymous}
-          style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 11, color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'background 0.15s' }}
+          style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 11, color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
         >
-          Continue without signing in
+          Giriş yapmadan devam et
         </button>
 
         <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.22)', fontSize: 11, marginTop: 20, lineHeight: 1.6 }}>
-          By continuing you agree to Link&apos;s{' '}
-          <span style={{ color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>Terms</span>
+          Devam ederek Link&apos;in{' '}
+          <span style={{ color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>Kullanım Şartları</span>
           {' '}&amp;{' '}
-          <span style={{ color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>Privacy Policy</span>
+          <span style={{ color: 'rgba(255,255,255,0.45)', cursor: 'pointer' }}>Gizlilik Politikası</span>&apos;nı kabul etmiş olursunuz.
         </p>
       </div>
     </main>
@@ -131,14 +154,24 @@ export default function SignInPage() {
   );
 }
 
-function SocialBtn({ icon, label, onClick, gradient, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; gradient?: boolean; disabled?: boolean }) {
+function Divider() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+      <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
+      <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, fontWeight: 500 }}>veya</span>
+      <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
+    </div>
+  );
+}
+
+function SocialBtn({ icon, label, onClick, disabled }: { icon: React.ReactNode; label: string; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{ width: '100%', padding: '13px 16px', background: gradient ? 'linear-gradient(90deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)' : 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 12, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Inter, sans-serif', opacity: disabled && !gradient ? 1 : undefined, transition: 'background 0.15s' }}
-      onMouseEnter={(e) => { if (!disabled && !gradient) e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-      onMouseLeave={(e) => { if (!disabled && !gradient) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
+      style={{ width: '100%', padding: '13px 16px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 12, cursor: disabled ? 'not-allowed' : 'pointer', fontFamily: 'Inter, sans-serif', opacity: disabled ? 0.6 : 1 }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
+      onMouseLeave={(e) => { if (!disabled) e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; }}
     >
       <span style={{ flexShrink: 0, width: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
       <span style={{ color: 'rgba(255,255,255,0.88)', fontSize: 13, fontWeight: 500, flex: 1, textAlign: 'center' }}>{label}</span>

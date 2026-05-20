@@ -112,8 +112,24 @@ export class RoomManager {
     }
 
     const producer = await this.producers.createProducer(peer, input);
+    const kind = producer.kind === 'audio' ? 'audio' : 'video';
 
-    logger.info({ roomId: input.roomId, peerId: input.peerId, producerId: producer.id, kind: producer.kind }, 'producer_created');
+    logger.info({ roomId: input.roomId, peerId: input.peerId, producerId: producer.id, kind }, 'producer_created');
+
+    this.notifySignaling('/internal/producer-new', {
+      roomId: input.roomId,
+      peerId: input.peerId,
+      producerId: producer.id,
+      kind,
+    });
+
+    producer.once('close', () => {
+      this.notifySignaling('/internal/producer-closed', {
+        roomId: input.roomId,
+        peerId: input.peerId,
+        producerId: producer.id,
+      });
+    });
 
     return { producerId: producer.id };
   }
@@ -202,16 +218,18 @@ export class RoomManager {
       this.closeRoom(roomId);
     }
 
-    // Notify signaling server so it can immediately broadcast participant-left
-    if (env.SIGNALING_INTERNAL_URL) {
-      void fetch(`${env.SIGNALING_INTERNAL_URL}/internal/peer-gone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId, peerId }),
-      }).catch((err: unknown) => {
-        logger.warn({ roomId, peerId, err }, 'signaling_peer_gone_notify_failed');
-      });
-    }
+    this.notifySignaling('/internal/peer-gone', { roomId, peerId });
+  }
+
+  private notifySignaling(path: string, body: Record<string, unknown>): void {
+    if (!env.SIGNALING_INTERNAL_URL) return;
+    void fetch(`${env.SIGNALING_INTERNAL_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch((err: unknown) => {
+      logger.warn({ path, body, err }, 'signaling_notify_failed');
+    });
   }
 
   closeRoom(roomId: RoomId): void {

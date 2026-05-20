@@ -1,27 +1,32 @@
 import type { FastifyInstance } from 'fastify';
-import { createUserBodySchema } from '@/modules/users/schema';
-import { createUser } from '@/modules/users/service';
+import { searchUserQuerySchema } from '@/modules/users/schema';
+import { getUserById, getUserByEmail } from '@/modules/users/service';
 
 export async function userRoutes(app: FastifyInstance): Promise<void> {
-  app.post(
-    '/users',
-    {
-      preHandler: [app.authenticate],
-      schema: {
-        tags: ['users'],
-        body: {
-          type: 'object',
-          properties: {
-            email: { type: 'string', format: 'email' },
-            displayName: { type: 'string', minLength: 2, maxLength: 50 },
-          },
-          required: ['email', 'displayName'],
-        },
-      },
+  // Returns the authenticated user's own profile
+  app.get(
+    '/users/me',
+    { preHandler: [app.authenticateInternal] },
+    async (request, reply) => {
+      const user = await getUserById(app, request.internalUserId);
+      if (!user) return reply.code(404).send({ code: 'NOT_FOUND', message: 'User not found' });
+      return user;
     },
-    async (request) => {
-      const payload = createUserBodySchema.parse(request.body);
-      return createUser(app, payload);
+  );
+
+  // Search a user by exact email (returns minimal public info)
+  app.get(
+    '/users/search',
+    { preHandler: [app.authenticateInternal] },
+    async (request, reply) => {
+      const { email } = searchUserQuerySchema.parse(request.query);
+      const user = await getUserByEmail(app, email);
+      if (!user) return reply.code(404).send({ code: 'NOT_FOUND', message: 'No user found with that email' });
+      // Don't expose the requester's own profile through search
+      if (user.id === request.internalUserId) {
+        return reply.code(400).send({ code: 'BAD_REQUEST', message: 'Cannot search yourself' });
+      }
+      return { id: user.id, email: user.email, displayName: user.displayName, avatarUrl: user.avatarUrl };
     },
   );
 }
