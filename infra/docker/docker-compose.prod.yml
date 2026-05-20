@@ -167,7 +167,7 @@ services:
       TURN_REALM: link.akoroglu.com.tr
       TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
       DATABASE_ENABLED: 'true'
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
     ports:
       - '127.0.0.1:4000:4000'
