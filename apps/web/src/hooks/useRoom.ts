@@ -537,6 +537,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     };
   }, [signalingClient, roomState, peerId, syncRemoteProducers, reconcile, roomId]);
 
+  // Broadcast photo-announce on join and whenever photo changes (session may load late)
+  useEffect(() => {
+    if (roomState !== 'joined' || !signalingClient || photo === undefined) return;
+    void signalingClient.sendPhotoAnnounce(roomId, photo ?? null).catch(() => undefined);
+  }, [roomState, signalingClient, roomId, photo]);
+
   // Periodic Redis reconciliation — ghost cleanup + missed event recovery
   useEffect(() => {
     if (roomState !== 'joined') return;
