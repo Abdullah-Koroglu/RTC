@@ -20,6 +20,10 @@ export class RoomManager {
   private readonly roomConnections = new Map<string, Set<string>>();
   // In-memory fallback when REDIS_ENABLED=false
   private readonly localRooms = new Map<string, Map<string, ParticipantState>>();
+  // roomId → participantId of current host
+  private readonly roomHosts = new Map<string, string>();
+  // roomId → locked state
+  private readonly roomLocked = new Map<string, boolean>();
 
   constructor(redis: Redis | null = null, ttlSeconds?: number) {
     this.redis = redis;
@@ -235,5 +239,54 @@ export class RoomManager {
 
   has(roomId: string, connectionId: string): boolean {
     return this.connectionRooms.get(connectionId)?.has(roomId) ?? false;
+  }
+
+  // ── Host management ──────────────────────────────────────────────────────
+
+  setHost(roomId: string, participantId: string): void {
+    this.roomHosts.set(roomId, participantId);
+  }
+
+  getHost(roomId: string): string | undefined {
+    return this.roomHosts.get(roomId);
+  }
+
+  isHost(roomId: string, participantId: string): boolean {
+    return this.roomHosts.get(roomId) === participantId;
+  }
+
+  /**
+   * Called when the current host leaves. Picks a random remaining participant
+   * as the new host. Returns the new host's participantId or null if room is empty.
+   */
+  transferHostRandom(roomId: string, leavingParticipantId: string): string | null {
+    const connectionIds = Array.from(this.roomConnections.get(roomId) ?? []);
+    const candidates: string[] = [];
+    for (const connId of connectionIds) {
+      const pid = this.connectionRooms.get(connId)?.get(roomId);
+      if (pid && pid !== leavingParticipantId) candidates.push(pid);
+    }
+    if (candidates.length === 0) {
+      this.roomHosts.delete(roomId);
+      return null;
+    }
+    const newHost = candidates[Math.floor(Math.random() * candidates.length)]!;
+    this.roomHosts.set(roomId, newHost);
+    return newHost;
+  }
+
+  // ── Lock management ──────────────────────────────────────────────────────
+
+  setLocked(roomId: string, locked: boolean): void {
+    this.roomLocked.set(roomId, locked);
+  }
+
+  isLocked(roomId: string): boolean {
+    return this.roomLocked.get(roomId) ?? false;
+  }
+
+  /** Returns the participantId for a given connectionId+roomId pair. */
+  getParticipantId(roomId: string, connectionId: string): string | undefined {
+    return this.connectionRooms.get(connectionId)?.get(roomId);
   }
 }

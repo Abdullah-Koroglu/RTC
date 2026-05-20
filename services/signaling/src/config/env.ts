@@ -17,6 +17,8 @@ const envSchema = z.object({
   MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(262144),
   SHUTDOWN_GRACE_MS: z.coerce.number().int().positive().default(12000),
   MEDIASOUP_INTERNAL_URL: z.string().url().default('http://localhost:4020'),
+  API_INTERNAL_URL: z.string().url().default('http://localhost:4000'),
+  INTERNAL_API_SECRET: z.string().min(32).default('dev_internal_secret_change_me_12345'),
 });
 
 export type Env = z.infer<typeof envSchema>;

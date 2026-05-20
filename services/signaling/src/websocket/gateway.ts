@@ -24,6 +24,8 @@ export class WebSocketGateway {
   private readonly dispatcher: EventDispatcher;
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: env.MAX_PAYLOAD_BYTES });
   private readonly recovery = new Map<string, RecoverySnapshot>();
+  // roomId → Map<peerId, { connectionId, displayName }>
+  private readonly waitingRoom = new Map<string, Map<string, { connectionId: string; displayName: string }>>();
   private heartbeatTimer?: NodeJS.Timeout;
 
   constructor(
@@ -234,6 +236,11 @@ export class WebSocketGateway {
         });
         conn.rooms.add(event.roomId);
 
+        // First joiner becomes host automatically
+        if (!this.rooms.getHost(event.roomId)) {
+          this.rooms.setHost(event.roomId, conn.participantId);
+        }
+
         await this.dispatcher.publishRoomEvent(event.roomId, {
           type: 'room.participant-joined',
           roomId: event.roomId,
@@ -244,11 +251,118 @@ export class WebSocketGateway {
       }
 
       const participants = await this.rooms.getParticipants(event.roomId);
-      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true, data: { participants } });
+      const hostPeerId = this.rooms.getHost(event.roomId);
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true, data: { participants, hostPeerId } });
+      return;
+    }
+
+    if (event.type === 'room.request-join') {
+      // Add to waiting list and notify host
+      const waiters = this.waitingRoom.get(event.roomId) ?? new Map();
+      waiters.set(conn.participantId, { connectionId: conn.connectionId, displayName: event.displayName ?? conn.participantId });
+      this.waitingRoom.set(event.roomId, waiters);
+
+      // Find host connection and notify
+      const hostPeerId = this.rooms.getHost(event.roomId);
+      if (hostPeerId) {
+        const hostConn = this.connections.getByParticipantId(hostPeerId);
+        if (hostConn) {
+          this.send(hostConn.socket, {
+            type: 'room.join-requested',
+            roomId: event.roomId,
+            peerId: conn.participantId,
+            displayName: event.displayName ?? conn.participantId,
+          });
+        }
+      }
+
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      return;
+    }
+
+    if (event.type === 'room.approve-join') {
+      const waiter = this.waitingRoom.get(event.roomId)?.get(event.peerId);
+      this.waitingRoom.get(event.roomId)?.delete(event.peerId);
+      if (waiter) {
+        const waiterConn = this.connections.getById(waiter.connectionId);
+        if (waiterConn) {
+          this.send(waiterConn.socket, { type: 'room.join-approved', roomId: event.roomId });
+        }
+      }
+      // Persist decision to DB so polling waiting users can see it
+      void this.notifyApiJoinDecision(event.roomId, event.peerId, 'approve');
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      return;
+    }
+
+    if (event.type === 'room.deny-join') {
+      const waiter = this.waitingRoom.get(event.roomId)?.get(event.peerId);
+      this.waitingRoom.get(event.roomId)?.delete(event.peerId);
+      if (waiter) {
+        const waiterConn = this.connections.getById(waiter.connectionId);
+        if (waiterConn) {
+          this.send(waiterConn.socket, { type: 'room.join-denied', roomId: event.roomId });
+        }
+      }
+      // Persist decision to DB
+      void this.notifyApiJoinDecision(event.roomId, event.peerId, 'deny');
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      return;
+    }
+
+    if (event.type === 'room.kick') {
+      if (!this.rooms.isHost(event.roomId, conn.participantId)) {
+        this.send(conn.socket, { type: 'error', code: 'FORBIDDEN', message: 'Only host can kick participants' });
+        return;
+      }
+      const kicked = this.connections.getByParticipantId(event.peerId);
+      if (kicked) {
+        this.send(kicked.socket, { type: 'room.participant-kicked', roomId: event.roomId, participantId: event.peerId });
+        kicked.socket.close(1000, 'kicked');
+      }
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      return;
+    }
+
+    if (event.type === 'room.lock') {
+      if (!this.rooms.isHost(event.roomId, conn.participantId)) {
+        this.send(conn.socket, { type: 'error', code: 'FORBIDDEN', message: 'Only host can lock the room' });
+        return;
+      }
+      this.rooms.setLocked(event.roomId, event.locked);
+      await this.dispatcher.publishRoomEvent(event.roomId, {
+        type: 'room.locked',
+        roomId: event.roomId,
+        locked: event.locked,
+      });
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      return;
+    }
+
+    if (event.type === 'room.transfer-host') {
+      if (!this.rooms.isHost(event.roomId, conn.participantId)) {
+        this.send(conn.socket, { type: 'error', code: 'FORBIDDEN', message: 'Only host can transfer host role' });
+        return;
+      }
+      const participants = await this.rooms.getParticipants(event.roomId);
+      const newHostState = participants.find((p) => p.participantId === event.peerId);
+      if (!newHostState) {
+        this.send(conn.socket, { type: 'error', code: 'NOT_FOUND', message: 'Participant not found' });
+        return;
+      }
+      this.rooms.setHost(event.roomId, event.peerId);
+      await this.dispatcher.publishRoomEvent(event.roomId, {
+        type: 'room.host-transferred',
+        roomId: event.roomId,
+        newHostPeerId: event.peerId,
+        newHostDisplayName: newHostState.displayName,
+      });
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
       return;
     }
 
     if (event.type === 'room.leave') {
+      const wasHost = this.rooms.isHost(event.roomId, conn.participantId);
       const left = await this.rooms.leave(event.roomId, conn.connectionId);
       conn.rooms.delete(event.roomId);
 
@@ -260,6 +374,20 @@ export class WebSocketGateway {
           connectionId: conn.connectionId,
           reason: 'leave',
         });
+
+        if (wasHost) {
+          const newHostId = this.rooms.transferHostRandom(event.roomId, conn.participantId);
+          if (newHostId) {
+            const participants = await this.rooms.getParticipants(event.roomId);
+            const newHostState = participants.find((p) => p.participantId === newHostId);
+            void this.dispatcher.publishRoomEvent(event.roomId, {
+              type: 'room.host-transferred',
+              roomId: event.roomId,
+              newHostPeerId: newHostId,
+              newHostDisplayName: newHostState?.displayName ?? newHostId,
+            });
+          }
+        }
       }
 
       this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
@@ -317,8 +445,40 @@ export class WebSocketGateway {
         reason,
       });
 
+      // Auto host transfer if the leaving participant was the host
+      if (this.rooms.isHost(item.roomId, item.participant.participantId)) {
+        const newHostId = this.rooms.transferHostRandom(item.roomId, item.participant.participantId);
+        if (newHostId) {
+          void this.rooms.getParticipants(item.roomId).then((participants) => {
+            const newHostState = participants.find((p) => p.participantId === newHostId);
+            void this.dispatcher.publishRoomEvent(item.roomId, {
+              type: 'room.host-transferred',
+              roomId: item.roomId,
+              newHostPeerId: newHostId,
+              newHostDisplayName: newHostState?.displayName ?? newHostId,
+            });
+          });
+        }
+      }
+
       void this.evictMediasoupPeer(item.roomId, item.participant.participantId);
     }
+  }
+
+  private notifyApiJoinDecision(roomId: string, peerId: string, action: 'approve' | 'deny'): Promise<void> {
+    return fetch(`${env.API_INTERNAL_URL}/v1/rooms/${roomId}/join-requests/peer/${peerId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.INTERNAL_API_SECRET}`,
+        'x-user-id': 'signaling',
+      },
+      body: JSON.stringify({ action }),
+    })
+      .then(() => undefined)
+      .catch((err) => {
+        this.app.log.warn({ roomId, peerId, action, err }, 'api_join_decision_notify_failed');
+      });
   }
 
   private evictMediasoupPeer(roomId: string, peerId: string): Promise<void> {

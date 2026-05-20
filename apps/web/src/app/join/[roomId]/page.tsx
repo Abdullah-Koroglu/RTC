@@ -59,6 +59,17 @@ const IcChev = ({ s = 14, c = 'currentColor' }: { s?: number; c?: string }) => (
   </svg>
 );
 
+/* ── Error/Gate screen ── */
+function GateScreen({ title, text }: { title: string; text: string }) {
+  return (
+    <div style={{ minHeight: '100vh', background: '#0a0c14', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,sans-serif', gap: 12 }}>
+      <p style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: 0 }}>{title}</p>
+      <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14, margin: 0 }}>{text}</p>
+      <a href="/" style={{ marginTop: 12, color: '#60a5fa', fontSize: 13, textDecoration: 'none' }}>← Ana Sayfaya Dön</a>
+    </div>
+  );
+}
+
 /* ── Connecting splash ── */
 function ConnectingSplash({ initials }: { initials: string }) {
   return (
@@ -125,6 +136,107 @@ function PreviewToggle({ on, onToggle, iconOn, iconOff }: { on: boolean; onToggl
   );
 }
 
+type RoomInfo = { type: 'public' | 'password' | 'invite_only'; isExpired: boolean; isLocked: boolean };
+type AccessPhase = 'loading' | 'password' | 'waiting' | 'lobby' | 'denied' | 'expired' | 'locked' | 'notfound';
+
+/* ── Waiting Room Screen ── */
+function WaitingScreen({ roomId, displayName, peerId, onApproved, onDenied }: { roomId: string; displayName: string; peerId: string; onApproved: () => void; onDenied: () => void }) {
+  const [dots, setDots] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    const t = setInterval(() => setDots((d) => d.length >= 3 ? '' : d + '.'), 600);
+    return () => clearInterval(t);
+  }, []);
+
+  // Submit join request once
+  useEffect(() => {
+    if (submitted) return;
+    setSubmitted(true);
+    void fetch(`/api/rooms/${roomId}/join-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ peerId, displayName }),
+    });
+  }, [roomId, peerId, displayName, submitted]);
+
+  // Poll for status every 3 seconds
+  useEffect(() => {
+    const check = async () => {
+      const res = await fetch(`/api/rooms/${roomId}/join-requests/${peerId}`).catch(() => null);
+      if (!res?.ok) return;
+      const data = await res.json() as { status?: string };
+      if (data.status === 'approved') onApproved();
+      else if (data.status === 'denied') onDenied();
+    };
+    const id = setInterval(() => void check(), 3000);
+    return () => clearInterval(id);
+  }, [roomId, peerId, onApproved, onDenied]);
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0a0c14', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif', gap: 20 }}>
+      <div style={{ position: 'relative' }}>
+        <div style={{ position: 'absolute', inset: -16, borderRadius: '50%', border: '2px solid rgba(59,130,246,0.3)', animation: 'pulseRing 1.4s ease-out infinite' }} />
+        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700, color: 'white' }}>
+          {(displayName[0] ?? '?').toUpperCase()}
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <p style={{ color: 'white', fontSize: 17, fontWeight: 600, margin: '0 0 6px' }}>Host onayı bekleniyor{dots}</p>
+        <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, margin: 0 }}>İstek gönderildi — host kabul edince otomatik katılacaksınız.</p>
+      </div>
+      <button onClick={onDenied} style={{ marginTop: 8, padding: '10px 24px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'rgba(255,255,255,0.5)', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+        Vazgeç
+      </button>
+    </div>
+  );
+}
+
+/* ── Password Screen ── */
+function PasswordScreen({ roomId, onSuccess, onBack }: { roomId: string; onSuccess: () => void; onBack: () => void }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    const res = await fetch(`/api/rooms/${roomId}/verify-password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    const data = await res.json() as { valid?: boolean };
+    setLoading(false);
+    if (data.valid) { onSuccess(); }
+    else { setError('Şifre hatalı. Tekrar deneyin.'); }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', background: '#0a0c14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter,sans-serif' }}>
+      <div style={{ background: 'rgba(22,27,42,0.9)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, padding: '32px 28px', width: '100%', maxWidth: 380 }}>
+        <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 6px', textAlign: 'center' }}>Şifreli Toplantı</h2>
+        <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, textAlign: 'center', margin: '0 0 24px' }}>Bu toplantıya katılmak için şifre gerekiyor.</p>
+        <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input type="password" autoFocus placeholder="Toplantı şifresi" value={password} onChange={(e) => setPassword(e.target.value)} required
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 13px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'Inter,sans-serif' }}
+            onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
+            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+          />
+          {error && <p style={{ color: '#f87171', fontSize: 13, margin: 0, textAlign: 'center' }}>{error}</p>}
+          <button type="submit" disabled={loading}
+            style={{ padding: '12px', background: loading ? '#1d4ed8' : '#3B82F6', border: 'none', borderRadius: 10, color: 'white', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'Inter,sans-serif', opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Doğrulanıyor…' : 'Katıl'}
+          </button>
+          <button type="button" onClick={onBack}
+            style={{ padding: '10px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+            ← Geri
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 /* ── Join Lobby Page ── */
 export default function JoinLobbyPage() {
   const router = useRouter();
@@ -132,6 +244,8 @@ export default function JoinLobbyPage() {
   const roomId = decodeURIComponent(params.roomId ?? '');
   const { data: session } = useSession();
 
+  const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
+  const [accessPhase, setAccessPhase] = useState<AccessPhase>('loading');
   const [name, setName] = useState('');
   const [camOn, setCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
@@ -144,6 +258,40 @@ export default function JoinLobbyPage() {
   const previewStreamRef = useRef<MediaStream | null>(null);
 
   const { cameras, microphones } = useDevices();
+
+  // Fetch room info and determine access phase
+  useEffect(() => {
+    void (async () => {
+      const res = await fetch(`/api/rooms/${roomId}`).catch(() => null);
+      if (!res) { setAccessPhase('notfound'); return; }
+      if (res.status === 404) { setAccessPhase('notfound'); return; }
+      const room = await res.json() as RoomInfo;
+      setRoomInfo(room);
+      if (room.isExpired) { setAccessPhase('expired'); return; }
+      if (room.isLocked) { setAccessPhase('locked'); return; }
+
+      if (room.type === 'public') {
+        setAccessPhase('lobby');
+        return;
+      }
+
+      // Check if invited (requires login)
+      if (session?.user?.id) {
+        const invRes = await fetch(`/api/rooms/${roomId}/invites/me`).catch(() => null);
+        if (invRes?.ok) {
+          const { invited } = await invRes.json() as { invited: boolean };
+          if (invited) { setAccessPhase('lobby'); return; }
+        }
+      }
+
+      if (room.type === 'password') {
+        setAccessPhase('password');
+      } else {
+        // invite_only and not invited → waiting room
+        setAccessPhase('waiting');
+      }
+    })();
+  }, [roomId, session?.user?.id]);
 
   // Pre-fill name from session or sessionStorage
   useEffect(() => {
@@ -227,6 +375,31 @@ export default function JoinLobbyPage() {
 
   const userAvatar = session?.user?.image;
   const userInitials = (session?.user?.name ?? '').trim().split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2);
+
+  const peerId = session?.user?.id ?? (typeof window !== 'undefined' ? sessionStorage.getItem(SS_PEER_ID) ?? `usr-${Math.random().toString(36).slice(2, 10)}` : 'guest');
+
+  // Access gate screens
+  if (accessPhase === 'loading') return <ConnectingSplash initials="…" />;
+  if (accessPhase === 'notfound') return <GateScreen title="Toplantı Bulunamadı" text="Bu oda mevcut değil veya silinmiş." />;
+  if (accessPhase === 'expired') return <GateScreen title="Toplantı Sona Erdi" text="Bu toplantının süresi dolmuş." />;
+  if (accessPhase === 'locked') return <GateScreen title="Oda Kilitli" text="Host bu odayı kilitledi, yeni katılımcı kabul edilmiyor." />;
+  if (accessPhase === 'denied') return <GateScreen title="Reddedildiniz" text="Host katılım isteğinizi reddetti." />;
+  if (accessPhase === 'password') return (
+    <PasswordScreen roomId={roomId}
+      onSuccess={() => {
+        // After correct password: if non-public type, go to waiting; otherwise lobby
+        if (roomInfo?.type === 'invite_only') setAccessPhase('waiting');
+        else setAccessPhase('lobby');
+      }}
+      onBack={() => router.back()}
+    />
+  );
+  if (accessPhase === 'waiting') return (
+    <WaitingScreen roomId={roomId} displayName={name || peerId} peerId={peerId}
+      onApproved={() => setAccessPhase('lobby')}
+      onDenied={() => setAccessPhase('denied')}
+    />
+  );
 
   if (connecting) return <ConnectingSplash initials={initials} />;
 

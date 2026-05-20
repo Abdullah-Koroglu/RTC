@@ -4,22 +4,48 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
-import { generateUUID } from '@/lib/uuid';
 
 export const dynamic = 'force-dynamic';
+
+type RoomType = 'public' | 'password' | 'invite_only';
 
 export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
   const [showCode, setShowCode] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [roomType, setRoomType] = useState<RoomType>('public');
+  const [roomPassword, setRoomPassword] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
   const codeRef = useRef<HTMLInputElement>(null);
 
-  const goToJoin = (roomId: string) => {
-    const dest = `/join/${encodeURIComponent(roomId)}`;
-    router.push(dest);
-  };
+  const goToJoin = (roomCode: string) => router.push(`/join/${encodeURIComponent(roomCode)}`);
 
-  const startMeeting = () => goToJoin(generateUUID());
+  const startMeeting = async () => {
+    if (roomType === 'password' && !roomPassword.trim()) {
+      setCreateError('Şifre giriniz');
+      return;
+    }
+    setCreating(true);
+    setCreateError('');
+    try {
+      const res = await fetch('/api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: roomType,
+          ...(roomType === 'password' ? { password: roomPassword } : {}),
+        }),
+      });
+      if (!res.ok) throw new Error('create failed');
+      const room = await res.json() as { roomCode: string };
+      goToJoin(room.roomCode);
+    } catch {
+      setCreateError('Oda oluşturulamadı, tekrar deneyin.');
+      setCreating(false);
+    }
+  };
 
   const joinWithCode = () => {
     const code = codeRef.current?.value.trim() ?? '';
@@ -83,9 +109,36 @@ export default function LandingPage() {
 
         {/* CTAs */}
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-          <HeroBtn primary onClick={startMeeting} label="Start a meeting" />
-          <HeroBtn onClick={() => setShowCode((v) => !v)} label={showCode ? 'Cancel' : 'Join with code'} />
+          <HeroBtn primary onClick={() => { setShowCreate((v) => !v); setShowCode(false); }} label={showCreate ? 'İptal' : 'Toplantı Başlat'} />
+          <HeroBtn onClick={() => { setShowCode((v) => !v); setShowCreate(false); }} label={showCode ? 'İptal' : 'Kodla Katıl'} />
         </div>
+
+        {/* Create meeting panel */}
+        {showCreate && (
+          <div style={{ marginTop: 20, maxWidth: 380, margin: '20px auto 0', background: 'rgba(22,27,42,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '20px', animation: 'fadeUp 0.2s ease both' }}>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 10px' }}>Toplantı Tipi</p>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {(['public', 'password', 'invite_only'] as RoomType[]).map((t) => (
+                <button key={t} onClick={() => setRoomType(t)}
+                  style={{ flex: 1, padding: '9px 6px', borderRadius: 9, border: `1px solid ${roomType === t ? 'rgba(59,130,246,0.7)' : 'rgba(255,255,255,0.08)'}`, background: roomType === t ? 'rgba(59,130,246,0.18)' : 'transparent', color: roomType === t ? '#93c5fd' : 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+                  {t === 'public' ? 'Herkese Açık' : t === 'password' ? 'Şifreli' : 'Sadece Davetli'}
+                </button>
+              ))}
+            </div>
+            {roomType === 'password' && (
+              <input type="password" placeholder="Toplantı şifresi (min 4 karakter)" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 9, padding: '10px 12px', color: 'white', fontSize: 13, outline: 'none', fontFamily: 'Inter,sans-serif', marginBottom: 12 }}
+                onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
+                onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+              />
+            )}
+            {createError && <p style={{ color: '#f87171', fontSize: 12, margin: '0 0 10px', textAlign: 'center' }}>{createError}</p>}
+            <button onClick={() => void startMeeting()} disabled={creating}
+              style={{ width: '100%', padding: '12px', background: creating ? '#1d4ed8' : '#3B82F6', border: 'none', borderRadius: 9, color: 'white', fontSize: 14, fontWeight: 600, cursor: creating ? 'not-allowed' : 'pointer', fontFamily: 'Inter,sans-serif', opacity: creating ? 0.7 : 1 }}>
+              {creating ? 'Oluşturuluyor…' : 'Toplantıyı Başlat'}
+            </button>
+          </div>
+        )}
 
         {/* Inline code input */}
         {showCode && (
@@ -93,7 +146,7 @@ export default function LandingPage() {
             <input
               ref={codeRef}
               id="room-id"
-              placeholder="Enter room code (e.g. room-k9p2m)"
+              placeholder="Oda kodu girin"
               spellCheck={false}
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && joinWithCode()}
@@ -105,7 +158,7 @@ export default function LandingPage() {
               onClick={joinWithCode}
               style={{ padding: '0 20px', background: '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontWeight: 600, fontSize: 14, cursor: 'pointer', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}
             >
-              Join
+              Katıl
             </button>
           </div>
         )}

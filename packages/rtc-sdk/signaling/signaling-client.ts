@@ -47,6 +47,12 @@ export type InboundSignalingEvent =
         targetParticipantId?: string;
       };
     }
+  | { type: 'room.join-requested'; roomId: string; peerId: string; displayName: string }
+  | { type: 'room.join-approved'; roomId: string }
+  | { type: 'room.join-denied'; roomId: string }
+  | { type: 'room.participant-kicked'; roomId: string; participantId: string }
+  | { type: 'room.locked'; roomId: string; locked: boolean }
+  | { type: 'room.host-transferred'; roomId: string; newHostPeerId: string; newHostDisplayName: string }
   | { type: 'producer.new'; roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' }
   | { type: 'producer.closed'; roomId: string; peerId: string; producerId: string }
   | { type: 'pong'; ts: number }
@@ -106,6 +112,12 @@ export interface SignalingClientEventMap {
   'chat.received': { roomId: string; participantId: string } & ChatMessagePayload;
   'name.announce': { roomId: string; participantId: string; displayName: string };
   'photo.announce': { roomId: string; participantId: string; photo: string | null };
+  'room.join-requested': { roomId: string; peerId: string; displayName: string };
+  'room.join-approved': { roomId: string };
+  'room.join-denied': { roomId: string };
+  'room.participant-kicked': { roomId: string; participantId: string };
+  'room.locked': { roomId: string; locked: boolean };
+  'room.host-transferred': { roomId: string; newHostPeerId: string; newHostDisplayName: string };
   'producer.new': { roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' };
   'producer.closed': { roomId: string; peerId: string; producerId: string };
   'reconnect.scheduled': { delayMs: number; attempt: number };
@@ -221,7 +233,11 @@ export class SignalingClient {
     this.socket = null;
   }
 
-  async joinRoom(roomId: string, displayName?: string, initialState?: { micEnabled?: boolean; cameraEnabled?: boolean }): Promise<ParticipantState[]> {
+  async joinRoom(
+    roomId: string,
+    displayName?: string,
+    initialState?: { micEnabled?: boolean; cameraEnabled?: boolean },
+  ): Promise<{ participants: ParticipantState[]; hostPeerId?: string }> {
     const requestId = this.generateRequestId();
     const message: OutboundSignalingEvent = {
       type: 'room.join',
@@ -242,8 +258,8 @@ export class SignalingClient {
       this.pendingRequests.set(requestId, {
         resolve: (data: unknown) => {
           this.emitter.emit('room.joined', { roomId });
-          const ackData = data as { participants?: ParticipantState[] } | undefined;
-          resolve(ackData?.participants ?? []);
+          const ackData = data as { participants?: ParticipantState[]; hostPeerId?: string } | undefined;
+          resolve({ participants: ackData?.participants ?? [], hostPeerId: ackData?.hostPeerId });
         },
         reject,
         timeout,
@@ -482,6 +498,18 @@ export class SignalingClient {
           cameraEnabled: message.cameraEnabled,
           micEnabled: message.micEnabled,
         });
+      } else if (message.type === 'room.join-requested') {
+        this.emitter.emit('room.join-requested', { roomId: message.roomId, peerId: message.peerId, displayName: message.displayName });
+      } else if (message.type === 'room.join-approved') {
+        this.emitter.emit('room.join-approved', { roomId: message.roomId });
+      } else if (message.type === 'room.join-denied') {
+        this.emitter.emit('room.join-denied', { roomId: message.roomId });
+      } else if (message.type === 'room.participant-kicked') {
+        this.emitter.emit('room.participant-kicked', { roomId: message.roomId, participantId: message.participantId });
+      } else if (message.type === 'room.locked') {
+        this.emitter.emit('room.locked', { roomId: message.roomId, locked: message.locked });
+      } else if (message.type === 'room.host-transferred') {
+        this.emitter.emit('room.host-transferred', { roomId: message.roomId, newHostPeerId: message.newHostPeerId, newHostDisplayName: message.newHostDisplayName });
       } else if (message.type === 'producer.new') {
         this.emitter.emit('producer.new', {
           roomId: message.roomId,

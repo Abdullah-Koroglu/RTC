@@ -201,6 +201,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       MEDIASOUP_INTERNAL_URL: http://rtc-mediasoup-prod:4020
+      API_INTERNAL_URL: http://rtc-api-prod:4000
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
       ALLOWED_ORIGINS: https://link.akoroglu.com.tr
     ports:
       - '127.0.0.1:4010:4010'

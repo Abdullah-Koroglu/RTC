@@ -14,3 +14,4 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   await app.register(roomRoutes, { prefix: '/v1' });
   await app.register(contactRoutes, { prefix: '/v1' });
 }
+

@@ -37,6 +37,10 @@ export interface UseRoomReturn {
   isScreenSharing: boolean;
   /** participantId → ParticipantState (includes displayName, cameraEnabled, micEnabled) */
   participants: Map<string, ParticipantState>;
+  hostPeerId: string | null;
+  isHost: boolean;
+  isRoomLocked: boolean;
+  joinRequests: Array<{ peerId: string; displayName: string }>;
   joinRoom: () => Promise<void>;
   leaveRoom: () => Promise<void>;
   publishMedia: (constraints?: MediaStreamConstraints) => Promise<MediaStream | null>;
@@ -46,6 +50,11 @@ export interface UseRoomReturn {
   startScreenShare: () => Promise<MediaStream | null>;
   stopScreenShare: () => void;
   sendChatMessage: (text: string) => void;
+  kickParticipant: (targetPeerId: string) => void;
+  lockRoom: (locked: boolean) => void;
+  approveJoin: (targetPeerId: string) => void;
+  denyJoin: (targetPeerId: string) => void;
+  transferHost: (targetPeerId: string) => void;
 }
 
 /**
@@ -69,6 +78,9 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [participants, setParticipants] = useState<Map<string, ParticipantState>>(new Map());
+  const [hostPeerId, setHostPeerId] = useState<string | null>(null);
+  const [isRoomLocked, setIsRoomLocked] = useState(false);
+  const [joinRequests, setJoinRequests] = useState<Array<{ peerId: string; displayName: string }>>([]);
 
   const mediaClientRef = useRef<MediasoupClient | null>(null);
   // producerId → peerId
@@ -119,7 +131,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
 
       await initializeMediasoup();
-      const initialParticipants = await signalingClient.joinRoom(
+      const { participants: initialParticipants, hostPeerId: initialHostPeerId } = await signalingClient.joinRoom(
         roomId,
         displayName ?? peerId,
         {
@@ -128,6 +140,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         },
       );
       setParticipants(new Map(initialParticipants.map((p) => [p.participantId, p])));
+      if (initialHostPeerId) setHostPeerId(initialHostPeerId);
       setRoomState('joined');
     } catch (err) {
       const joinError = err instanceof Error ? err : new Error('Failed to join room');
@@ -523,6 +536,35 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     );
 
     listeners.push(
+      signalingClient.on('room.join-requested', ({ peerId: requesterPeerId, displayName: requesterName }) => {
+        setJoinRequests((prev) => {
+          if (prev.some((r) => r.peerId === requesterPeerId)) return prev;
+          return [...prev, { peerId: requesterPeerId, displayName: requesterName }];
+        });
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.participant-kicked', ({ participantId: kickedId }) => {
+        if (kickedId === peerId) {
+          void signalingClient.leaveRoom(roomId).catch(() => undefined);
+        }
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.locked', ({ locked }) => {
+        setIsRoomLocked(locked);
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.host-transferred', ({ newHostPeerId }) => {
+        setHostPeerId(newHostPeerId);
+      }),
+    );
+
+    listeners.push(
       signalingClient.on('producer.new', ({ peerId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
           void syncRemoteProducers().catch(() => undefined);
@@ -589,6 +631,33 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     }
   }, [autoJoin, isSignalingConnected, roomState, joinRoom]);
 
+  const sendRaw = useCallback((msg: Record<string, unknown>) => {
+    const ws = (signalingClient as unknown as { socket: WebSocket | null } | null)?.socket;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+  }, [signalingClient]);
+
+  const kickParticipant = useCallback((targetPeerId: string) => {
+    sendRaw({ type: 'room.kick', roomId, peerId: targetPeerId });
+  }, [sendRaw, roomId]);
+
+  const lockRoom = useCallback((locked: boolean) => {
+    sendRaw({ type: 'room.lock', roomId, locked });
+  }, [sendRaw, roomId]);
+
+  const approveJoin = useCallback((targetPeerId: string) => {
+    setJoinRequests((prev) => prev.filter((r) => r.peerId !== targetPeerId));
+    sendRaw({ type: 'room.approve-join', roomId, peerId: targetPeerId });
+  }, [sendRaw, roomId]);
+
+  const denyJoin = useCallback((targetPeerId: string) => {
+    setJoinRequests((prev) => prev.filter((r) => r.peerId !== targetPeerId));
+    sendRaw({ type: 'room.deny-join', roomId, peerId: targetPeerId });
+  }, [sendRaw, roomId]);
+
+  const transferHost = useCallback((targetPeerId: string) => {
+    sendRaw({ type: 'room.transfer-host', roomId, peerId: targetPeerId });
+  }, [sendRaw, roomId]);
+
   return {
     roomState,
     error,
@@ -598,6 +667,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     screenStream,
     isScreenSharing,
     participants,
+    hostPeerId,
+    isHost: hostPeerId === peerId,
+    isRoomLocked,
+    joinRequests,
     joinRoom,
     leaveRoom,
     publishMedia,
@@ -607,5 +680,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     startScreenShare,
     stopScreenShare,
     sendChatMessage,
+    kickParticipant,
+    lockRoom,
+    approveJoin,
+    denyJoin,
+    transferHost,
   };
 }

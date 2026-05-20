@@ -8,6 +8,7 @@ import { useRoom } from '@/hooks/useRoom';
 import { useDevices } from '@/hooks/useDevices';
 import { VideoTile } from '@/components/VideoTile';
 import { ChatPanel } from '@/components/ChatPanel';
+import { HostPanel } from '@/components/HostPanel';
 import { generateUUID } from '@/lib/uuid';
 
 const SS_DISPLAY_NAME = 'rtc:displayName';
@@ -576,6 +577,7 @@ export default function RoomPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [breakoutOpen, setBreakoutOpen] = useState(false);
+  const [hostPanelOpen, setHostPanelOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [screenShareToast, setScreenShareToast] = useState('');
   const [isMobile, setIsMobile] = useState(false);
@@ -610,6 +612,9 @@ export default function RoomPage() {
     screenStream,
     isScreenSharing,
     participants,
+    isHost,
+    isRoomLocked,
+    joinRequests,
     leaveRoom,
     publishMedia,
     unpublishMedia,
@@ -618,6 +623,11 @@ export default function RoomPage() {
     startScreenShare,
     stopScreenShare,
     sendChatMessage,
+    kickParticipant,
+    lockRoom,
+    approveJoin,
+    denyJoin,
+    transferHost,
   } = useRoom({
     roomId,
     peerId,
@@ -884,6 +894,37 @@ export default function RoomPage() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} onRepublish={(c, m) => void onRepublish(c, m)} />}
       {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
+
+      {/* Host panel button */}
+      {isHost && (
+        <button
+          onClick={() => setHostPanelOpen((v) => !v)}
+          style={{ position: 'fixed', top: 64, right: 12, padding: '7px 13px', background: joinRequests.length > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(59,130,246,0.2)', border: `1px solid ${joinRequests.length > 0 ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.4)'}`, borderRadius: 10, color: joinRequests.length > 0 ? '#f87171' : '#93c5fd', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter,sans-serif', zIndex: 150, display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          👑 Host Paneli
+          {joinRequests.length > 0 && (
+            <span style={{ background: '#ef4444', color: 'white', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
+              {joinRequests.length}
+            </span>
+          )}
+        </button>
+      )}
+
+      {hostPanelOpen && isHost && (
+        <HostPanel
+          isHost={isHost}
+          isLocked={isRoomLocked}
+          joinRequests={joinRequests}
+          participants={participants}
+          myPeerId={peerId}
+          onApprove={approveJoin}
+          onDeny={denyJoin}
+          onKick={kickParticipant}
+          onLock={lockRoom}
+          onTransferHost={transferHost}
+          onClose={() => setHostPanelOpen(false)}
+        />
+      )}
     </div>
   );
 }

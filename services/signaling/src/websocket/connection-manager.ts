@@ -10,6 +10,13 @@ export class ConnectionManager {
     return this.byId.get(connectionId);
   }
 
+  getByParticipantId(participantId: string): ConnectionState | undefined {
+    for (const conn of this.byId.values()) {
+      if (conn.participantId === participantId) return conn;
+    }
+    return undefined;
+  }
+
   register(socket: WebSocket, participantId: string, nodeId: string, recoveryToken: string): ConnectionState {
     const connection: ConnectionState = {
       connectionId: randomUUID(),

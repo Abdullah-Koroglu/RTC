@@ -46,6 +46,48 @@ export const clientParticipantStateUpdateSchema = z.object({
   requestId: z.string().optional(),
 });
 
+export const clientRequestJoinSchema = z.object({
+  type: z.literal('room.request-join'),
+  roomId: z.string().min(1),
+  displayName: z.string().optional(),
+  requestId: z.string().optional(),
+});
+
+export const clientApproveJoinSchema = z.object({
+  type: z.literal('room.approve-join'),
+  roomId: z.string().min(1),
+  peerId: z.string().min(1),
+  requestId: z.string().optional(),
+});
+
+export const clientDenyJoinSchema = z.object({
+  type: z.literal('room.deny-join'),
+  roomId: z.string().min(1),
+  peerId: z.string().min(1),
+  requestId: z.string().optional(),
+});
+
+export const clientKickSchema = z.object({
+  type: z.literal('room.kick'),
+  roomId: z.string().min(1),
+  peerId: z.string().min(1),
+  requestId: z.string().optional(),
+});
+
+export const clientLockRoomSchema = z.object({
+  type: z.literal('room.lock'),
+  roomId: z.string().min(1),
+  locked: z.boolean(),
+  requestId: z.string().optional(),
+});
+
+export const clientTransferHostSchema = z.object({
+  type: z.literal('room.transfer-host'),
+  roomId: z.string().min(1),
+  peerId: z.string().min(1),
+  requestId: z.string().optional(),
+});
+
 export const inboundEventSchema = z.discriminatedUnion('type', [
   clientJoinRoomSchema,
   clientLeaveRoomSchema,
@@ -53,6 +95,12 @@ export const inboundEventSchema = z.discriminatedUnion('type', [
   clientReconnectSchema,
   clientPingSchema,
   clientParticipantStateUpdateSchema,
+  clientRequestJoinSchema,
+  clientApproveJoinSchema,
+  clientDenyJoinSchema,
+  clientKickSchema,
+  clientLockRoomSchema,
+  clientTransferHostSchema,
 ]);
 
 export type InboundEvent = z.infer<typeof inboundEventSchema>;
@@ -101,6 +149,36 @@ export type OutboundEvent =
         data: unknown;
         targetParticipantId?: string;
       };
+    }
+  | {
+      type: 'room.join-requested';
+      roomId: string;
+      peerId: string;
+      displayName: string;
+    }
+  | {
+      type: 'room.join-approved';
+      roomId: string;
+    }
+  | {
+      type: 'room.join-denied';
+      roomId: string;
+    }
+  | {
+      type: 'room.participant-kicked';
+      roomId: string;
+      participantId: string;
+    }
+  | {
+      type: 'room.locked';
+      roomId: string;
+      locked: boolean;
+    }
+  | {
+      type: 'room.host-transferred';
+      roomId: string;
+      newHostPeerId: string;
+      newHostDisplayName: string;
     }
   | {
       type: 'producer.new';
