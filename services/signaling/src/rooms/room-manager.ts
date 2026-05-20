@@ -34,8 +34,8 @@ export class RoomManager {
     return `room:${roomId}:participant-ids`;
   }
 
-  async join(roomId: string, params: { participantId: string; connectionId: string; displayName?: string }): Promise<void> {
-    const { participantId, connectionId, displayName } = params;
+  async join(roomId: string, params: { participantId: string; connectionId: string; displayName?: string; micEnabled?: boolean; cameraEnabled?: boolean }): Promise<void> {
+    const { participantId, connectionId, displayName, micEnabled, cameraEnabled } = params;
 
     if (!this.connectionRooms.has(connectionId)) {
       this.connectionRooms.set(connectionId, new Map());
@@ -61,8 +61,8 @@ export class RoomManager {
           participantId,
           connectionId,
           displayName: displayName ?? '',
-          cameraEnabled: false,
-          micEnabled: false,
+          cameraEnabled: cameraEnabled ?? false,
+          micEnabled: micEnabled ?? false,
           joinedAt: new Date().toISOString(),
         };
         await this.redis.set(key, JSON.stringify(state), 'EX', this.ttlSeconds);
@@ -82,8 +82,8 @@ export class RoomManager {
           participantId,
           connectionId,
           displayName: displayName ?? '',
-          cameraEnabled: false,
-          micEnabled: false,
+          cameraEnabled: cameraEnabled ?? false,
+          micEnabled: micEnabled ?? false,
           joinedAt: new Date().toISOString(),
         });
       }

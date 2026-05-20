@@ -210,6 +210,8 @@ export class WebSocketGateway {
           participantId: conn.participantId,
           connectionId: conn.connectionId,
           ...(event.displayName !== undefined ? { displayName: event.displayName } : {}),
+          ...(event.micEnabled !== undefined ? { micEnabled: event.micEnabled } : {}),
+          ...(event.cameraEnabled !== undefined ? { cameraEnabled: event.cameraEnabled } : {}),
         });
         conn.rooms.add(event.roomId);
 

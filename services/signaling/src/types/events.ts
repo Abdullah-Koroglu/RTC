@@ -4,6 +4,8 @@ export const clientJoinRoomSchema = z.object({
   type: z.literal('room.join'),
   roomId: z.string().min(1),
   displayName: z.string().optional(),
+  micEnabled: z.boolean().optional(),
+  cameraEnabled: z.boolean().optional(),
   requestId: z.string().optional(),
 });
 
@@ -17,7 +19,7 @@ export const clientSignalSchema = z.object({
   type: z.literal('signal.relay'),
   roomId: z.string().min(1),
   payload: z.object({
-    kind: z.enum(['offer', 'answer', 'ice-candidate', 'chat', 'name-announce']),
+    kind: z.enum(['offer', 'answer', 'ice-candidate', 'chat', 'name-announce', 'photo-announce']),
     data: z.unknown(),
     targetParticipantId: z.string().optional(),
   }),
@@ -95,7 +97,7 @@ export type OutboundEvent =
       roomId: string;
       participantId: string;
       payload: {
-        kind: 'offer' | 'answer' | 'ice-candidate' | 'chat' | 'name-announce';
+        kind: 'offer' | 'answer' | 'ice-candidate' | 'chat' | 'name-announce' | 'photo-announce';
         data: unknown;
         targetParticipantId?: string;
       };

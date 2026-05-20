@@ -1,6 +1,6 @@
 import { TypedEventEmitter } from '../events/event-emitter';
 
-export type SignalKind = 'offer' | 'answer' | 'ice-candidate' | 'chat' | 'name-announce';
+export type SignalKind = 'offer' | 'answer' | 'ice-candidate' | 'chat' | 'name-announce' | 'photo-announce';
 
 export interface ParticipantState {
   participantId: string;
@@ -8,6 +8,7 @@ export interface ParticipantState {
   cameraEnabled: boolean;
   micEnabled: boolean;
   joinedAt: string;
+  photo?: string | null;
 }
 
 // Inbound event types from signaling server
@@ -56,7 +57,7 @@ export type InboundSignalingEvent =
 
 // Outbound event types to signaling server
 export type OutboundSignalingEvent =
-  | { type: 'room.join'; roomId: string; displayName?: string | undefined; requestId?: string | undefined }
+  | { type: 'room.join'; roomId: string; displayName?: string | undefined; micEnabled?: boolean | undefined; cameraEnabled?: boolean | undefined; requestId?: string | undefined }
   | { type: 'room.leave'; roomId: string; requestId?: string }
   | {
       type: 'signal.relay';
@@ -102,6 +103,7 @@ export interface SignalingClientEventMap {
   };
   'chat.received': { roomId: string; participantId: string } & ChatMessagePayload;
   'name.announce': { roomId: string; participantId: string; displayName: string };
+  'photo.announce': { roomId: string; participantId: string; photo: string | null };
   'reconnect.scheduled': { delayMs: number; attempt: number };
   'reconnect.succeeded': { attempt: number };
   'reconnect.failed': { attempt: number; error: Error };
@@ -215,12 +217,14 @@ export class SignalingClient {
     this.socket = null;
   }
 
-  async joinRoom(roomId: string, displayName?: string): Promise<ParticipantState[]> {
+  async joinRoom(roomId: string, displayName?: string, initialState?: { micEnabled?: boolean; cameraEnabled?: boolean }): Promise<ParticipantState[]> {
     const requestId = this.generateRequestId();
     const message: OutboundSignalingEvent = {
       type: 'room.join',
       roomId,
       displayName,
+      ...(initialState?.micEnabled !== undefined ? { micEnabled: initialState.micEnabled } : {}),
+      ...(initialState?.cameraEnabled !== undefined ? { cameraEnabled: initialState.cameraEnabled } : {}),
       requestId,
     };
     await this.sendMessage(message);
@@ -351,6 +355,24 @@ export class SignalingClient {
     });
   }
 
+  async sendPhotoAnnounce(roomId: string, photo: string | null): Promise<void> {
+    const requestId = this.generateRequestId();
+    const message: OutboundSignalingEvent = {
+      type: 'signal.relay',
+      roomId,
+      payload: { kind: 'photo-announce', data: { photo } },
+      requestId,
+    };
+    await this.sendMessage(message);
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        resolve(); // non-critical
+      }, 3000);
+      this.pendingRequests.set(requestId, { resolve: () => { clearTimeout(timeout); resolve(); }, reject, timeout });
+    });
+  }
+
   async sendChatMessage(roomId: string, text: string, senderName: string): Promise<void> {
     const requestId = this.generateRequestId();
     const payload: ChatMessagePayload = { text, senderName, ts: Date.now() };
@@ -472,6 +494,13 @@ export class SignalingClient {
             roomId: message.roomId,
             participantId: message.participantId,
             displayName: payload.displayName,
+          });
+        } else if (message.payload.kind === 'photo-announce') {
+          const payload = message.payload.data as { photo: string | null };
+          this.emitter.emit('photo.announce', {
+            roomId: message.roomId,
+            participantId: message.participantId,
+            photo: payload.photo,
           });
         } else {
           this.emitter.emit('signal.received', {

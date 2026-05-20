@@ -22,6 +22,9 @@ export interface UseRoomOptions {
   peerId: string;
   displayName?: string;
   autoJoin?: boolean;
+  initialMicEnabled?: boolean;
+  initialCameraEnabled?: boolean;
+  photo?: string | null;
 }
 
 export interface UseRoomReturn {
@@ -54,7 +57,9 @@ export interface UseRoomReturn {
  */
 export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const env = getClientEnv();
-  const { roomId, peerId, displayName, autoJoin = true } = options;
+  const { roomId, peerId, displayName, autoJoin = true, initialMicEnabled, initialCameraEnabled, photo } = options;
+  const photoRef = useRef(photo);
+  useEffect(() => { photoRef.current = photo; }, [photo]);
 
   const [roomState, setRoomState] = useState<RoomState>('idle');
   const [error, setError] = useState<Error | null>(null);
@@ -114,7 +119,14 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
 
       await initializeMediasoup();
-      const initialParticipants = await signalingClient.joinRoom(roomId, displayName ?? peerId);
+      const initialParticipants = await signalingClient.joinRoom(
+        roomId,
+        displayName ?? peerId,
+        {
+          ...(initialMicEnabled !== undefined ? { micEnabled: initialMicEnabled } : {}),
+          ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
+        },
+      );
       setParticipants(new Map(initialParticipants.map((p) => [p.participantId, p])));
       setRoomState('joined');
     } catch (err) {
@@ -123,7 +135,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       setRoomState('error');
       throw joinError;
     }
-  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId]);
+  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId, initialMicEnabled, initialCameraEnabled]);
 
   const leaveRoom = useCallback(async () => {
     try {
@@ -367,25 +379,19 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     const listeners: (() => void)[] = [];
 
     listeners.push(
-      signalingClient.on('room.participant-joined', ({ participantId: remotePeerId, displayName: remoteDisplayName }) => {
+      signalingClient.on('room.participant-joined', ({ participantId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
-          if (remoteDisplayName) {
-            setParticipants((prev) => {
-              const next = new Map(prev);
-              const existing = next.get(remotePeerId);
-              next.set(remotePeerId, {
-                participantId: remotePeerId,
-                displayName: remoteDisplayName,
-                cameraEnabled: existing?.cameraEnabled ?? false,
-                micEnabled: existing?.micEnabled ?? false,
-                joinedAt: existing?.joinedAt ?? new Date().toISOString(),
-              });
-              return next;
-            });
-          }
+          // Fetch fresh state from Redis instead of defaulting mic/cam to false
+          void reconcile().catch((err) => {
+            console.error('Reconcile failed after participant joined', { roomId, peerId, remotePeerId, error: err });
+          });
           void syncRemoteProducers().catch((err) => {
             console.error('Sync failed after participant joined', { roomId, peerId, remotePeerId, error: err });
           });
+          // Re-broadcast our photo so the new joiner can see it
+          if (photoRef.current !== undefined) {
+            void signalingClient.sendPhotoAnnounce(roomId, photoRef.current ?? null).catch(() => undefined);
+          }
         }
       }),
     );
@@ -396,13 +402,29 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           setParticipants((prev) => {
             const next = new Map(prev);
             const existing = next.get(remotePeerId);
-            next.set(remotePeerId, {
+            const updated: ParticipantState = {
               participantId: remotePeerId,
               displayName: remoteDisplayName,
               cameraEnabled,
               micEnabled,
               joinedAt: existing?.joinedAt ?? new Date().toISOString(),
-            });
+            };
+            if (existing?.photo !== undefined) updated.photo = existing.photo;
+            next.set(remotePeerId, updated);
+            return next;
+          });
+        }
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('photo.announce', ({ participantId: remotePeerId, photo }) => {
+        if (remotePeerId !== peerId) {
+          setParticipants((prev) => {
+            const existing = prev.get(remotePeerId);
+            if (!existing) return prev;
+            const next = new Map(prev);
+            next.set(remotePeerId, { ...existing, photo });
             return next;
           });
         }
@@ -468,52 +490,59 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     };
   }, [signalingClient, roomState, peerId, syncRemoteProducers]);
 
+  // Reconcile participants + ghost streams from Redis — extracted for reuse
+  const reconcile = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/participants`);
+      if (!res.ok) return;
+      const { participants: fresh } = await res.json() as { participants: ParticipantState[] };
+      const freshMap = new Map(fresh.map((p) => [p.participantId, p]));
+
+      setParticipants((prev) => {
+        const next = new Map<string, ParticipantState>();
+        for (const [id, p] of freshMap) {
+          if (id === peerId) continue;
+          const existing = prev.get(id);
+          // Preserve client-side photo field not stored in Redis
+          const entry: ParticipantState = { ...p };
+          if (existing?.photo !== undefined) entry.photo = existing.photo;
+          next.set(id, entry);
+        }
+        return next;
+      });
+
+      setRemoteStreams((prev) => {
+        const ghostKeys = [...prev.keys()].filter((key) => {
+          const basePeer = key.split(':')[0]!;
+          return basePeer !== peerId && !freshMap.has(basePeer);
+        });
+        if (ghostKeys.length === 0) return prev;
+        const updated = new Map(prev);
+        for (const key of ghostKeys) {
+          updated.get(key)?.getTracks().forEach((t) => t.stop());
+          updated.delete(key);
+          const basePeer = key.split(':')[0]!;
+          producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
+            if (ownerPeerId === basePeer) {
+              subscribedProducerIdsRef.current.delete(producerId);
+              producerOwnerRef.current.delete(producerId);
+              screenProducerKeysRef.current.delete(producerId);
+            }
+          });
+        }
+        return updated;
+      });
+    } catch {
+      // best-effort, ignore errors
+    }
+  }, [roomId, peerId]);
+
   // Periodic Redis reconciliation — ghost cleanup + missed event recovery
   useEffect(() => {
     if (roomState !== 'joined') return;
-
-    const reconcile = async () => {
-      try {
-        const res = await fetch(`/api/rooms/${roomId}/participants`);
-        if (!res.ok) return;
-        const { participants: fresh } = await res.json() as { participants: ParticipantState[] };
-        const freshMap = new Map(fresh.map((p) => [p.participantId, p]));
-
-        setParticipants(() => {
-          const next = new Map(freshMap);
-          next.delete(peerId);
-          return next;
-        });
-
-        setRemoteStreams((prev) => {
-          const ghostKeys = [...prev.keys()].filter((key) => {
-            const basePeer = key.split(':')[0]!;
-            return basePeer !== peerId && !freshMap.has(basePeer);
-          });
-          if (ghostKeys.length === 0) return prev;
-          const updated = new Map(prev);
-          for (const key of ghostKeys) {
-            updated.get(key)?.getTracks().forEach((t) => t.stop());
-            updated.delete(key);
-            const basePeer = key.split(':')[0]!;
-            producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
-              if (ownerPeerId === basePeer) {
-                subscribedProducerIdsRef.current.delete(producerId);
-                producerOwnerRef.current.delete(producerId);
-                screenProducerKeysRef.current.delete(producerId);
-              }
-            });
-          }
-          return updated;
-        });
-      } catch {
-        // best-effort, ignore errors
-      }
-    };
-
     const id = setInterval(() => { void reconcile(); }, 7000);
     return () => clearInterval(id);
-  }, [roomState, roomId, peerId]);
+  }, [roomState, reconcile]);
 
   // Periodic producer discovery
   useEffect(() => {
