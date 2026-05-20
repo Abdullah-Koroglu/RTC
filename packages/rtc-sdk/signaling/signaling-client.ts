@@ -259,7 +259,10 @@ export class SignalingClient {
         resolve: (data: unknown) => {
           this.emitter.emit('room.joined', { roomId });
           const ackData = data as { participants?: ParticipantState[]; hostPeerId?: string } | undefined;
-          resolve({ participants: ackData?.participants ?? [], hostPeerId: ackData?.hostPeerId });
+          resolve({
+            participants: ackData?.participants ?? [],
+            ...(ackData?.hostPeerId !== undefined ? { hostPeerId: ackData.hostPeerId } : {}),
+          });
         },
         reject,
         timeout,

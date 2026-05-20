@@ -209,7 +209,7 @@ export const redisEnvelopeSchema = z.object({
   emittedAt: z.string(),
   roomId: z.string().min(1),
   sourceNodeId: z.string().min(1),
-  event: z.custom<Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' | 'producer.new' | 'producer.closed' }>>(),
+  event: z.custom<Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' | 'producer.new' | 'producer.closed' | 'room.locked' | 'room.host-transferred' }>>(),
 });
 
 export type RedisEnvelope = z.infer<typeof redisEnvelopeSchema>;

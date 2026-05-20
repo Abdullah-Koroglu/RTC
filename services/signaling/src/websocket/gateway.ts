@@ -252,7 +252,12 @@ export class WebSocketGateway {
 
       const participants = await this.rooms.getParticipants(event.roomId);
       const hostPeerId = this.rooms.getHost(event.roomId);
-      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true, data: { participants, hostPeerId } });
+      this.send(conn.socket, {
+        type: 'ack',
+        requestId: event.requestId,
+        ok: true,
+        data: { participants, ...(hostPeerId !== undefined ? { hostPeerId } : {}) },
+      } as Parameters<typeof this.send>[1]);
       return;
     }
 

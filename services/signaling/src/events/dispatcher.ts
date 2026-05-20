@@ -25,7 +25,7 @@ export class EventDispatcher {
 
   async publishRoomEvent(
     roomId: string,
-    event: Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' | 'producer.new' | 'producer.closed' }>,
+    event: Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' | 'producer.new' | 'producer.closed' | 'room.locked' | 'room.host-transferred' }>,
   ): Promise<void> {
     const envelope: DistributedRoomEvent = {
       eventId: randomUUID(),
