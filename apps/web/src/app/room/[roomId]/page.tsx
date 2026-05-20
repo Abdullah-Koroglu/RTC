@@ -172,7 +172,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
     ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, photo: localPhoto ?? null }] : []),
     ...remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => {
       const pState = participants.get(key);
-      return { key, stream, label: resolve(key), muted: false, mirrored: false, ...(pState ? { isMicMuted: !pState.micEnabled, cameraEnabled: pState.cameraEnabled } : {}) };
+      return { key, stream, label: resolve(key), muted: false, mirrored: false, ...(pState ? { isMicMuted: !pState.micEnabled, cameraEnabled: pState.cameraEnabled, photo: pState.photo ?? null } : {}) };
     }),
   ];
 
@@ -232,7 +232,7 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
       stream,
       label: isScreen ? `${resolve(basePeer)} (Screen)` : resolve(key),
       muted: false,
-      ...(!isScreen && pState ? { isMicMuted: !pState.micEnabled, cameraEnabled: pState.cameraEnabled } : {}),
+      ...(!isScreen && pState ? { isMicMuted: !pState.micEnabled, cameraEnabled: pState.cameraEnabled, photo: pState.photo ?? null } : {}),
     });
   }
   const count = tiles.length;
@@ -594,6 +594,14 @@ export default function RoomPage() {
 
   const readyToJoin = displayName !== '';
 
+  // Read join-time preferences once (stable for the session)
+  const [initialMicEnabled] = useState(() =>
+    typeof window !== 'undefined' ? sessionStorage.getItem(SS_MIC_ON) !== '0' : true,
+  );
+  const [initialCameraEnabled] = useState(() =>
+    typeof window !== 'undefined' ? sessionStorage.getItem(SS_CAM_ON) !== '0' : true,
+  );
+
   const {
     roomState,
     localStream,
@@ -610,7 +618,15 @@ export default function RoomPage() {
     startScreenShare,
     stopScreenShare,
     sendChatMessage,
-  } = useRoom({ roomId, peerId, displayName, autoJoin: readyToJoin });
+  } = useRoom({
+    roomId,
+    peerId,
+    displayName,
+    autoJoin: readyToJoin,
+    initialMicEnabled,
+    initialCameraEnabled,
+    photo: session?.user?.image ?? null,
+  });
 
   // Helper: resolve display name from stream key
   const resolveLabel = (key: string, suffix?: string): string => {

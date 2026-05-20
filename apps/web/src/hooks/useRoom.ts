@@ -372,6 +372,53 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     [signalingClient, roomId, peerId, displayName],
   );
 
+  // Reconcile participants + ghost streams from Redis — extracted for reuse
+  const reconcile = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/participants`);
+      if (!res.ok) return;
+      const { participants: fresh } = await res.json() as { participants: ParticipantState[] };
+      const freshMap = new Map(fresh.map((p) => [p.participantId, p]));
+
+      setParticipants((prev) => {
+        const next = new Map<string, ParticipantState>();
+        for (const [id, p] of freshMap) {
+          if (id === peerId) continue;
+          const existing = prev.get(id);
+          // Preserve client-side photo field not stored in Redis
+          const entry: ParticipantState = { ...p };
+          if (existing?.photo !== undefined) entry.photo = existing.photo;
+          next.set(id, entry);
+        }
+        return next;
+      });
+
+      setRemoteStreams((prev) => {
+        const ghostKeys = [...prev.keys()].filter((key) => {
+          const basePeer = key.split(':')[0]!;
+          return basePeer !== peerId && !freshMap.has(basePeer);
+        });
+        if (ghostKeys.length === 0) return prev;
+        const updated = new Map(prev);
+        for (const key of ghostKeys) {
+          updated.get(key)?.getTracks().forEach((t) => t.stop());
+          updated.delete(key);
+          const basePeer = key.split(':')[0]!;
+          producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
+            if (ownerPeerId === basePeer) {
+              subscribedProducerIdsRef.current.delete(producerId);
+              producerOwnerRef.current.delete(producerId);
+              screenProducerKeysRef.current.delete(producerId);
+            }
+          });
+        }
+        return updated;
+      });
+    } catch {
+      // best-effort, ignore errors
+    }
+  }, [roomId, peerId]);
+
   // Signaling event listeners
   useEffect(() => {
     if (!signalingClient || roomState !== 'joined') return;
@@ -488,54 +535,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     return () => {
       listeners.forEach((unsub) => unsub());
     };
-  }, [signalingClient, roomState, peerId, syncRemoteProducers]);
-
-  // Reconcile participants + ghost streams from Redis — extracted for reuse
-  const reconcile = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/rooms/${roomId}/participants`);
-      if (!res.ok) return;
-      const { participants: fresh } = await res.json() as { participants: ParticipantState[] };
-      const freshMap = new Map(fresh.map((p) => [p.participantId, p]));
-
-      setParticipants((prev) => {
-        const next = new Map<string, ParticipantState>();
-        for (const [id, p] of freshMap) {
-          if (id === peerId) continue;
-          const existing = prev.get(id);
-          // Preserve client-side photo field not stored in Redis
-          const entry: ParticipantState = { ...p };
-          if (existing?.photo !== undefined) entry.photo = existing.photo;
-          next.set(id, entry);
-        }
-        return next;
-      });
-
-      setRemoteStreams((prev) => {
-        const ghostKeys = [...prev.keys()].filter((key) => {
-          const basePeer = key.split(':')[0]!;
-          return basePeer !== peerId && !freshMap.has(basePeer);
-        });
-        if (ghostKeys.length === 0) return prev;
-        const updated = new Map(prev);
-        for (const key of ghostKeys) {
-          updated.get(key)?.getTracks().forEach((t) => t.stop());
-          updated.delete(key);
-          const basePeer = key.split(':')[0]!;
-          producerOwnerRef.current.forEach((ownerPeerId, producerId) => {
-            if (ownerPeerId === basePeer) {
-              subscribedProducerIdsRef.current.delete(producerId);
-              producerOwnerRef.current.delete(producerId);
-              screenProducerKeysRef.current.delete(producerId);
-            }
-          });
-        }
-        return updated;
-      });
-    } catch {
-      // best-effort, ignore errors
-    }
-  }, [roomId, peerId]);
+  }, [signalingClient, roomState, peerId, syncRemoteProducers, reconcile, roomId]);
 
   // Periodic Redis reconciliation — ghost cleanup + missed event recovery
   useEffect(() => {
