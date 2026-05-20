@@ -19,7 +19,7 @@ RUN pnpm install --frozen-lockfile
 FROM deps AS builder
 WORKDIR /repo
 COPY . .
-RUN pnpm --filter @repo/api exec tsup src/index.ts --format esm --target node20 --out-dir dist --clean
+RUN pnpm --filter @repo/api exec tsup src/index.ts src/scripts/migrate.ts --format esm --target node20 --out-dir dist --clean
 
 FROM node:20-alpine AS runner
 WORKDIR /repo
@@ -28,6 +28,7 @@ RUN addgroup -S nodejs && adduser -S appuser -G nodejs
 
 COPY --from=deps /repo/ /repo/
 COPY --from=builder /repo/services/api/dist /repo/services/api/dist
+COPY --from=builder /repo/services/api/migrations /repo/services/api/migrations
 
 USER appuser
 

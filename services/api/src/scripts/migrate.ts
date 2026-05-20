@@ -7,7 +7,9 @@ const DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://postgres:postgres
 const pool = new Pool({ connectionString: DATABASE_URL });
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MIGRATIONS_DIR = join(__dirname, '../../migrations');
+// dev: src/scripts/migrate.ts  → ../../migrations
+// prod: dist/migrate.js         → ../migrations
+const MIGRATIONS_DIR = join(__dirname, process.env.NODE_ENV === 'production' ? '../migrations' : '../../migrations');
 
 async function migrate() {
   await pool.query(`

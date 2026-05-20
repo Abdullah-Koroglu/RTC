@@ -36,6 +36,7 @@ services:
       MEDIASOUP_LISTEN_IP: 0.0.0.0
       MEDIASOUP_ANNOUNCED_IP: ${MEDIASOUP_ANNOUNCED_IP}
       CORS_ORIGIN: https://link.akoroglu.com.tr
+      SIGNALING_INTERNAL_URL: http://rtc-signaling-prod:4010
       MEDIASOUP_ENABLE_UDP: 'true'
       MEDIASOUP_ENABLE_TCP: 'true'
       MEDIASOUP_PREFER_UDP: 'true'
@@ -159,12 +160,15 @@ services:
       NODE_ENV: production
       PORT: 4000
       HOST: 0.0.0.0
+      REDIS_ENABLED: 'true'
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: https://link.akoroglu.com.tr
       TURN_REALM: link.akoroglu.com.tr
       TURN_SHARED_SECRET: ${TURN_SHARED_SECRET}
+      DATABASE_ENABLED: 'true'
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
     ports:
       - '127.0.0.1:4000:4000'
     depends_on:
@@ -234,6 +238,8 @@ services:
       NEXTAUTH_URL: https://link.akoroglu.com.tr
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
       SIGNALING_INTERNAL_URL: http://rtc-signaling-prod:4010
+      API_INTERNAL_URL: http://rtc-api-prod:4000
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
