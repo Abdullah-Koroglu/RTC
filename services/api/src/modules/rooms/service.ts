@@ -44,6 +44,8 @@ function generateRoomCode(): string {
   return randomBytes(5).toString('hex'); // 10 char hex, e.g. "3f8a2c1d9b"
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function createRoom(
   app: FastifyInstance,
   input: CreateRoomBody,
@@ -51,12 +53,14 @@ export async function createRoom(
 ): Promise<RoomInfo> {
   const roomCode = generateRoomCode();
   const passwordHash = input.password ? await bcrypt.hash(input.password, 10) : null;
+  // Only pass a real UUID as host — anonymous/non-UUID values become null
+  const validHostId = hostUserId && UUID_RE.test(hostUserId) ? hostUserId : null;
 
   const result = await app.db.query<DbRoom>(
     `INSERT INTO rooms (room_code, host_user_id, type, password_hash)
      VALUES ($1, $2, $3, $4)
      RETURNING id, room_code, host_user_id, type, is_locked, expires_at, created_at, ended_at`,
-    [roomCode, hostUserId, input.type, passwordHash],
+    [roomCode, validHostId, input.type, passwordHash],
   );
   const room = result.rows[0]!;
 

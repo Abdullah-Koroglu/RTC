@@ -246,6 +246,8 @@ export default function JoinLobbyPage() {
 
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [accessPhase, setAccessPhase] = useState<AccessPhase>('loading');
+  const [showWaiting, setShowWaiting] = useState(false);
+  const [waitingPeerId, setWaitingPeerId] = useState('');
   const [name, setName] = useState('');
   const [camOn, setCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
@@ -351,16 +353,7 @@ export default function JoinLobbyPage() {
 
   const canJoin = name.trim().length > 0;
 
-  const handleJoin = () => {
-    if (!canJoin) { document.getElementById('join-name-input')?.focus(); return; }
-
-    // Stop preview
-    if (previewStreamRef.current) {
-      previewStreamRef.current.getTracks().forEach((t) => t.stop());
-      previewStreamRef.current = null;
-    }
-
-    // Save to sessionStorage
+  const saveSessionPrefs = () => {
     sessionStorage.setItem(SS_DISPLAY_NAME, name.trim());
     const peerId = (session?.user?.id) ?? getOrCreatePeerId();
     sessionStorage.setItem(SS_PEER_ID, peerId);
@@ -368,6 +361,25 @@ export default function JoinLobbyPage() {
     if (selectedMic) sessionStorage.setItem(SS_AUDIO_DEVICE, selectedMic);
     sessionStorage.setItem(SS_MIC_ON, micOn ? '1' : '0');
     sessionStorage.setItem(SS_CAM_ON, camOn ? '1' : '0');
+    return peerId;
+  };
+
+  const handleJoin = () => {
+    if (!canJoin) { document.getElementById('join-name-input')?.focus(); return; }
+
+    if (previewStreamRef.current) {
+      previewStreamRef.current.getTracks().forEach((t) => t.stop());
+      previewStreamRef.current = null;
+    }
+
+    const peerId = saveSessionPrefs();
+
+    // Waiting phase → show waiting screen with name already set
+    if (accessPhase === 'waiting') {
+      setWaitingPeerId(peerId);
+      setShowWaiting(true);
+      return;
+    }
 
     setConnecting(true);
     setTimeout(() => router.push(`/room/${encodeURIComponent(roomId)}`), 1900);
@@ -375,8 +387,6 @@ export default function JoinLobbyPage() {
 
   const userAvatar = session?.user?.image;
   const userInitials = (session?.user?.name ?? '').trim().split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-
-  const peerId = session?.user?.id ?? (typeof window !== 'undefined' ? sessionStorage.getItem(SS_PEER_ID) ?? `usr-${Math.random().toString(36).slice(2, 10)}` : 'guest');
 
   // Access gate screens
   if (accessPhase === 'loading') return <ConnectingSplash initials="…" />;
@@ -387,17 +397,22 @@ export default function JoinLobbyPage() {
   if (accessPhase === 'password') return (
     <PasswordScreen roomId={roomId}
       onSuccess={() => {
-        // After correct password: if non-public type, go to waiting; otherwise lobby
         if (roomInfo?.type === 'invite_only') setAccessPhase('waiting');
         else setAccessPhase('lobby');
       }}
       onBack={() => router.back()}
     />
   );
-  if (accessPhase === 'waiting') return (
-    <WaitingScreen roomId={roomId} displayName={name || peerId} peerId={peerId}
-      onApproved={() => setAccessPhase('lobby')}
-      onDenied={() => setAccessPhase('denied')}
+
+  // Waiting screen shown AFTER lobby (name is set at this point)
+  if (showWaiting) return (
+    <WaitingScreen roomId={roomId} displayName={name.trim()} peerId={waitingPeerId}
+      onApproved={() => {
+        setShowWaiting(false);
+        setConnecting(true);
+        setTimeout(() => router.push(`/room/${encodeURIComponent(roomId)}`), 1900);
+      }}
+      onDenied={() => { setShowWaiting(false); setAccessPhase('denied'); }}
     />
   );
 
@@ -512,8 +527,14 @@ export default function JoinLobbyPage() {
           onMouseEnter={(e) => { if (canJoin) { e.currentTarget.style.background = '#2563EB'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(59,130,246,0.35)'; } }}
           onMouseLeave={(e) => { if (canJoin) { e.currentTarget.style.background = '#3B82F6'; e.currentTarget.style.boxShadow = 'none'; } }}
         >
-          Join Room
+          {accessPhase === 'waiting' ? 'Katılım İste' : 'Odaya Katıl'}
         </button>
+
+        {accessPhase === 'waiting' && (
+          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: 12, margin: '10px 0 0' }}>
+            Bu oda yalnızca davetli kullanıcılara açık. İsim girerek host'tan onay isteyebilirsiniz.
+          </p>
+        )}
       </div>
 
       <p style={{ marginTop: 18, color: 'rgba(255,255,255,0.18)', fontSize: 11, textAlign: 'center' }}>
