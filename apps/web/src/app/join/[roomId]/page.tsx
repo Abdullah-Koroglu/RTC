@@ -193,7 +193,7 @@ function WaitingScreen({ roomId, displayName, peerId, onApproved, onDenied }: { 
 }
 
 /* ── Password Screen ── */
-function PasswordScreen({ roomId, onSuccess, onBack }: { roomId: string; onSuccess: () => void; onBack: () => void }) {
+function PasswordScreen({ roomId, onSuccess, onBack, onRequestJoin }: { roomId: string; onSuccess: () => void; onBack: () => void; onRequestJoin: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -227,10 +227,16 @@ function PasswordScreen({ roomId, onSuccess, onBack }: { roomId: string; onSucce
             style={{ padding: '12px', background: loading ? '#1d4ed8' : '#3B82F6', border: 'none', borderRadius: 10, color: 'white', fontSize: 14, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'Inter,sans-serif', opacity: loading ? 0.7 : 1 }}>
             {loading ? 'Doğrulanıyor…' : 'Katıl'}
           </button>
-          <button type="button" onClick={onBack}
-            style={{ padding: '10px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
-            ← Geri
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
+            <button type="button" onClick={onBack}
+              style={{ flex: 1, padding: '10px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+              ← Geri
+            </button>
+            <button type="button" onClick={onRequestJoin}
+              style={{ flex: 1, padding: '10px', background: 'transparent', border: 'none', color: '#60a5fa', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif', textDecoration: 'underline' }}>
+              Şifre yok, izin iste
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -396,11 +402,9 @@ export default function JoinLobbyPage() {
   if (accessPhase === 'denied') return <GateScreen title="Reddedildiniz" text="Host katılım isteğinizi reddetti." />;
   if (accessPhase === 'password') return (
     <PasswordScreen roomId={roomId}
-      onSuccess={() => {
-        if (roomInfo?.type === 'invite_only') setAccessPhase('waiting');
-        else setAccessPhase('lobby');
-      }}
+      onSuccess={() => setAccessPhase('lobby')}
       onBack={() => router.back()}
+      onRequestJoin={() => setAccessPhase('waiting')}
     />
   );
 

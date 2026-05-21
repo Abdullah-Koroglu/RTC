@@ -24,6 +24,10 @@ export class RoomManager {
   private readonly roomHosts = new Map<string, string>();
   // roomId → locked state
   private readonly roomLocked = new Map<string, boolean>();
+  // roomId → Set of banned peerIds (kicked users)
+  private readonly bannedPeers = new Map<string, Set<string>>();
+  // roomId → Set of peerIds with hand raised
+  private readonly raisedHands = new Map<string, Set<string>>();
 
   constructor(redis: Redis | null = null, ttlSeconds?: number) {
     this.redis = redis;
@@ -288,5 +292,31 @@ export class RoomManager {
   /** Returns the participantId for a given connectionId+roomId pair. */
   getParticipantId(roomId: string, connectionId: string): string | undefined {
     return this.connectionRooms.get(connectionId)?.get(roomId);
+  }
+
+  // ── Ban management ───────────────────────────────────────────────────────
+
+  banPeer(roomId: string, peerId: string): void {
+    if (!this.bannedPeers.has(roomId)) this.bannedPeers.set(roomId, new Set());
+    this.bannedPeers.get(roomId)!.add(peerId);
+  }
+
+  isBanned(roomId: string, peerId: string): boolean {
+    return this.bannedPeers.get(roomId)?.has(peerId) ?? false;
+  }
+
+  // ── Hand raise management ────────────────────────────────────────────────
+
+  raiseHand(roomId: string, peerId: string): void {
+    if (!this.raisedHands.has(roomId)) this.raisedHands.set(roomId, new Set());
+    this.raisedHands.get(roomId)!.add(peerId);
+  }
+
+  lowerHand(roomId: string, peerId: string): void {
+    this.raisedHands.get(roomId)?.delete(peerId);
+  }
+
+  hasHandRaised(roomId: string, peerId: string): boolean {
+    return this.raisedHands.get(roomId)?.has(peerId) ?? false;
   }
 }

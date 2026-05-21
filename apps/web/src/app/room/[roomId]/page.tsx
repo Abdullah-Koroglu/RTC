@@ -83,7 +83,7 @@ const TopBar = memo(function TopBar({ roomId, count, screenSharing, onSettings, 
           <span style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13 }}>{count}</span>
         </div>
         {!isMobile && <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)' }} />}
-        {!isMobile && <TopBarBtn onClick={onSettings} icon={<IcGear />} />}
+        <TopBarBtn onClick={onSettings} icon={<IcGear />} />
         {!isMobile && <TopBarBtn onClick={onShortcuts} icon={<IcHelp />} />}
         {!isMobile && <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.08)' }} />}
         <ProfileAvatar name={userName} photo={userPhoto} onClick={onProfile} />
@@ -118,7 +118,7 @@ function CtrlBtn({ onClick, icon, label, danger, forceRed, lit, badge }: { onCli
 }
 
 /* ── Control bar ── */
-function ControlBar({ micOn, camOn, screenShare, chatOpen, breakoutOpen, unread, onMic, onCam, onScreen, onChat, onBreakout, onLeave, isMobile }: { micOn: boolean; camOn: boolean; screenShare: boolean; chatOpen: boolean; breakoutOpen: boolean; unread: number; onMic: () => void; onCam: () => void; onScreen: () => void; onChat: () => void; onBreakout: () => void; onLeave: () => void; isMobile: boolean }) {
+function ControlBar({ micOn, camOn, screenShare, chatOpen, breakoutOpen, unread, handRaised, onMic, onCam, onScreen, onChat, onBreakout, onHand, onLeave, isMobile }: { micOn: boolean; camOn: boolean; screenShare: boolean; chatOpen: boolean; breakoutOpen: boolean; unread: number; handRaised: boolean; onMic: () => void; onCam: () => void; onScreen: () => void; onChat: () => void; onBreakout: () => void; onHand: () => void; onLeave: () => void; isMobile: boolean }) {
   const L = (s: string) => isMobile ? undefined : s;
   return (
     <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: isMobile ? 72 : 82, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: 'rgba(10,12,18,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.06)', zIndex: 100, padding: '0 20px' }}>
@@ -126,6 +126,7 @@ function ControlBar({ micOn, camOn, screenShare, chatOpen, breakoutOpen, unread,
       <CtrlBtn onClick={onCam}      icon={camOn ? <IcVideo s={20} /> : <IcVideoOff s={20} />} label={L(camOn ? 'Stop Video' : 'Start Video')} danger={!camOn} />
       <CtrlBtn onClick={onScreen}   icon={<IcMonitor s={20} />}                                label={L('Share')}    lit={screenShare} />
       <CtrlBtn onClick={onChat}     icon={<IcChat s={20} />}                                   label={L('Chat')}     lit={chatOpen} badge={unread} />
+      <CtrlBtn onClick={onHand}     icon={<span style={{ fontSize: 18 }}>✋</span>}            label={L(handRaised ? 'El İndir' : 'El Kaldır')} lit={handRaised} />
       <CtrlBtn onClick={onBreakout} icon={<IcGrid s={20} />}                                   label={L('Rooms')}    lit={breakoutOpen} />
       <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)', margin: '0 4px' }} />
       <CtrlBtn onClick={onLeave}    icon={<IcPhone s={20} />} label={L('Leave')} forceRed />
@@ -578,6 +579,7 @@ export default function RoomPage() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [breakoutOpen, setBreakoutOpen] = useState(false);
   const [hostPanelOpen, setHostPanelOpen] = useState(false);
+  const [myHandRaised, setMyHandRaised] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [screenShareToast, setScreenShareToast] = useState('');
   const [isMobile, setIsMobile] = useState(false);
@@ -614,7 +616,10 @@ export default function RoomPage() {
     participants,
     isHost,
     isRoomLocked,
+    wasKicked,
     joinRequests,
+    raisedHands,
+    unmuteRequest,
     leaveRoom,
     publishMedia,
     unpublishMedia,
@@ -628,6 +633,11 @@ export default function RoomPage() {
     approveJoin,
     denyJoin,
     transferHost,
+    forceMute,
+    requestUnmute,
+    raiseHand,
+    lowerHand,
+    dismissUnmuteRequest,
   } = useRoom({
     roomId,
     peerId,
@@ -643,6 +653,11 @@ export default function RoomPage() {
     const base = participants.get(key)?.displayName ?? key;
     return suffix ? `${base} (${suffix})` : base;
   };
+
+  // Redirect if kicked
+  useEffect(() => {
+    if (wasKicked) router.replace('/?kicked=1');
+  }, [wasKicked, router]);
 
   // Redirect to join lobby if no displayName
   useEffect(() => {
@@ -858,11 +873,13 @@ export default function RoomPage() {
         chatOpen={isChatOpen}
         breakoutOpen={breakoutOpen}
         unread={unreadCount}
+        handRaised={myHandRaised}
         onMic={onToggleAudio}
         onCam={onToggleVideo}
         onScreen={() => void onToggleScreen()}
         onChat={() => { setIsChatOpen((v) => { if (!v) { setUnreadCount(0); setBreakoutOpen(false); } return !v; }); }}
         onBreakout={() => { setBreakoutOpen((v) => { if (!v) setIsChatOpen(false); return !v; }); }}
+        onHand={() => { if (myHandRaised) { lowerHand(); setMyHandRaised(false); } else { raiseHand(); setMyHandRaised(true); } }}
         onLeave={() => void onLeave()}
         isMobile={isMobile}
       />
@@ -895,6 +912,38 @@ export default function RoomPage() {
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} onRepublish={(c, m) => void onRepublish(c, m)} />}
       {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
 
+      {/* Unmute request from host */}
+      {unmuteRequest && (
+        <div style={{ position: 'fixed', bottom: 96, left: '50%', transform: 'translateX(-50%)', background: 'rgba(22,27,42,0.97)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 14, padding: '16px 20px', fontFamily: 'Inter,sans-serif', zIndex: 500, boxShadow: '0 12px 40px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, minWidth: 280 }}>
+          <p style={{ color: 'white', fontSize: 14, fontWeight: 600, margin: 0 }}>
+            Host {unmuteRequest.kind === 'audio' ? 'mikrofon' : unmuteRequest.kind === 'video' ? 'kamera' : 'mikrofon ve kamera'}nızı açmanızı istiyor
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => { if (unmuteRequest.kind === 'audio' || unmuteRequest.kind === 'both') setAudioEnabled(true); if (unmuteRequest.kind === 'video' || unmuteRequest.kind === 'both') setVideoEnabled(true); dismissUnmuteRequest(); }}
+              style={{ padding: '8px 18px', background: '#3B82F6', border: 'none', borderRadius: 8, color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+              Aç
+            </button>
+            <button onClick={dismissUnmuteRequest}
+              style={{ padding: '8px 18px', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, color: 'rgba(255,255,255,0.6)', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+              Reddet
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Raised hands notification (for host) */}
+      {isHost && raisedHands.length > 0 && (
+        <div style={{ position: 'fixed', bottom: 96, right: 16, background: 'rgba(22,27,42,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '12px 16px', fontFamily: 'Inter,sans-serif', zIndex: 300, maxWidth: 220 }}>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>El Kaldıranlar</p>
+          {raisedHands.map((h) => (
+            <div key={h.peerId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+              <span style={{ color: 'white', fontSize: 12 }}>✋ {h.displayName}</span>
+              <button onClick={() => lowerHand(h.peerId)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', fontSize: 11, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>İndir</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Host panel button */}
       {isHost && (
         <button
@@ -922,6 +971,8 @@ export default function RoomPage() {
           onKick={kickParticipant}
           onLock={lockRoom}
           onTransferHost={transferHost}
+          onForceMute={forceMute}
+          onRequestUnmute={requestUnmute}
           onClose={() => setHostPanelOpen(false)}
         />
       )}

@@ -88,6 +88,35 @@ export const clientTransferHostSchema = z.object({
   requestId: z.string().optional(),
 });
 
+export const clientForceMuteSchema = z.object({
+  type: z.literal('room.force-mute'),
+  roomId: z.string().min(1),
+  peerId: z.string().min(1),
+  kind: z.enum(['audio', 'video', 'both']),
+  requestId: z.string().optional(),
+});
+
+export const clientRequestUnmuteSchema = z.object({
+  type: z.literal('room.request-unmute'),
+  roomId: z.string().min(1),
+  peerId: z.string().min(1),
+  kind: z.enum(['audio', 'video', 'both']),
+  requestId: z.string().optional(),
+});
+
+export const clientRaiseHandSchema = z.object({
+  type: z.literal('room.raise-hand'),
+  roomId: z.string().min(1),
+  requestId: z.string().optional(),
+});
+
+export const clientLowerHandSchema = z.object({
+  type: z.literal('room.lower-hand'),
+  roomId: z.string().min(1),
+  peerId: z.string().min(1).optional(),
+  requestId: z.string().optional(),
+});
+
 export const inboundEventSchema = z.discriminatedUnion('type', [
   clientJoinRoomSchema,
   clientLeaveRoomSchema,
@@ -101,6 +130,10 @@ export const inboundEventSchema = z.discriminatedUnion('type', [
   clientKickSchema,
   clientLockRoomSchema,
   clientTransferHostSchema,
+  clientForceMuteSchema,
+  clientRequestUnmuteSchema,
+  clientRaiseHandSchema,
+  clientLowerHandSchema,
 ]);
 
 export type InboundEvent = z.infer<typeof inboundEventSchema>;
@@ -179,6 +212,28 @@ export type OutboundEvent =
       roomId: string;
       newHostPeerId: string;
       newHostDisplayName: string;
+    }
+  | {
+      type: 'room.participant-muted';
+      roomId: string;
+      participantId: string;
+      kind: 'audio' | 'video' | 'both';
+    }
+  | {
+      type: 'room.unmute-requested';
+      roomId: string;
+      kind: 'audio' | 'video' | 'both';
+    }
+  | {
+      type: 'room.hand-raised';
+      roomId: string;
+      participantId: string;
+      displayName: string;
+    }
+  | {
+      type: 'room.hand-lowered';
+      roomId: string;
+      participantId: string;
     }
   | {
       type: 'producer.new';

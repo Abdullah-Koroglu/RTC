@@ -53,6 +53,10 @@ export type InboundSignalingEvent =
   | { type: 'room.participant-kicked'; roomId: string; participantId: string }
   | { type: 'room.locked'; roomId: string; locked: boolean }
   | { type: 'room.host-transferred'; roomId: string; newHostPeerId: string; newHostDisplayName: string }
+  | { type: 'room.participant-muted'; roomId: string; participantId: string; kind: 'audio' | 'video' | 'both' }
+  | { type: 'room.unmute-requested'; roomId: string; kind: 'audio' | 'video' | 'both' }
+  | { type: 'room.hand-raised'; roomId: string; participantId: string; displayName: string }
+  | { type: 'room.hand-lowered'; roomId: string; participantId: string }
   | { type: 'producer.new'; roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' }
   | { type: 'producer.closed'; roomId: string; peerId: string; producerId: string }
   | { type: 'pong'; ts: number }
@@ -118,6 +122,10 @@ export interface SignalingClientEventMap {
   'room.participant-kicked': { roomId: string; participantId: string };
   'room.locked': { roomId: string; locked: boolean };
   'room.host-transferred': { roomId: string; newHostPeerId: string; newHostDisplayName: string };
+  'room.participant-muted': { roomId: string; participantId: string; kind: 'audio' | 'video' | 'both' };
+  'room.unmute-requested': { roomId: string; kind: 'audio' | 'video' | 'both' };
+  'room.hand-raised': { roomId: string; participantId: string; displayName: string };
+  'room.hand-lowered': { roomId: string; participantId: string };
   'producer.new': { roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' };
   'producer.closed': { roomId: string; peerId: string; producerId: string };
   'reconnect.scheduled': { delayMs: number; attempt: number };
@@ -513,6 +521,14 @@ export class SignalingClient {
         this.emitter.emit('room.locked', { roomId: message.roomId, locked: message.locked });
       } else if (message.type === 'room.host-transferred') {
         this.emitter.emit('room.host-transferred', { roomId: message.roomId, newHostPeerId: message.newHostPeerId, newHostDisplayName: message.newHostDisplayName });
+      } else if (message.type === 'room.participant-muted') {
+        this.emitter.emit('room.participant-muted', { roomId: message.roomId, participantId: message.participantId, kind: message.kind });
+      } else if (message.type === 'room.unmute-requested') {
+        this.emitter.emit('room.unmute-requested', { roomId: message.roomId, kind: message.kind });
+      } else if (message.type === 'room.hand-raised') {
+        this.emitter.emit('room.hand-raised', { roomId: message.roomId, participantId: message.participantId, displayName: message.displayName });
+      } else if (message.type === 'room.hand-lowered') {
+        this.emitter.emit('room.hand-lowered', { roomId: message.roomId, participantId: message.participantId });
       } else if (message.type === 'producer.new') {
         this.emitter.emit('producer.new', {
           roomId: message.roomId,

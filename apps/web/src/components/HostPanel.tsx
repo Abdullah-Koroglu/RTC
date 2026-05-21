@@ -13,12 +13,14 @@ interface Props {
   onKick: (peerId: string) => void;
   onLock: (locked: boolean) => void;
   onTransferHost: (peerId: string) => void;
+  onForceMute: (peerId: string, kind: 'audio' | 'video' | 'both') => void;
+  onRequestUnmute: (peerId: string, kind: 'audio' | 'video' | 'both') => void;
   onClose: () => void;
 }
 
 export function HostPanel({
   isHost, isLocked, joinRequests, participants, myPeerId,
-  onApprove, onDeny, onKick, onLock, onTransferHost, onClose,
+  onApprove, onDeny, onKick, onLock, onTransferHost, onForceMute, onRequestUnmute, onClose,
 }: Props) {
   if (!isHost) return null;
 
@@ -82,10 +84,20 @@ export function HostPanel({
           <div style={S.section}>
             <p style={S.sectionTitle}>Katılımcılar ({others.length})</p>
             {others.map((p) => (
-              <div key={p.participantId} style={S.row}>
-                <span style={S.name}>{p.displayName || p.participantId}</span>
-                <button style={S.btn('ghost')} onClick={() => onTransferHost(p.participantId)} title="Host yap">👑</button>
-                <button style={S.btn('red')} onClick={() => onKick(p.participantId)}>At</button>
+              <div key={p.participantId} style={{ ...S.row, flexWrap: 'wrap' as const, gap: 6 }}>
+                <span style={{ ...S.name, flexBasis: '100%' }}>{p.displayName || p.participantId}</span>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' as const }}>
+                  {p.micEnabled
+                    ? <button style={S.btn('red')} onClick={() => onForceMute(p.participantId, 'audio')} title="Mic kapat">🎤 Kapat</button>
+                    : <button style={S.btn('ghost')} onClick={() => onRequestUnmute(p.participantId, 'audio')} title="Mic aç iste">🎤 Aç iste</button>
+                  }
+                  {p.cameraEnabled
+                    ? <button style={S.btn('red')} onClick={() => onForceMute(p.participantId, 'video')} title="Kamera kapat">📷 Kapat</button>
+                    : <button style={S.btn('ghost')} onClick={() => onRequestUnmute(p.participantId, 'video')} title="Kamera aç iste">📷 Aç iste</button>
+                  }
+                  <button style={S.btn('ghost')} onClick={() => onTransferHost(p.participantId)} title="Host yap">👑</button>
+                  <button style={S.btn('red')} onClick={() => onKick(p.participantId)}>At</button>
+                </div>
               </div>
             ))}
           </div>

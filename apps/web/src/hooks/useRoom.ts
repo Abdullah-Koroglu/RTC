@@ -40,7 +40,10 @@ export interface UseRoomReturn {
   hostPeerId: string | null;
   isHost: boolean;
   isRoomLocked: boolean;
+  wasKicked: boolean;
   joinRequests: Array<{ peerId: string; displayName: string }>;
+  raisedHands: Array<{ peerId: string; displayName: string }>;
+  unmuteRequest: { kind: 'audio' | 'video' | 'both' } | null;
   joinRoom: () => Promise<void>;
   leaveRoom: () => Promise<void>;
   publishMedia: (constraints?: MediaStreamConstraints) => Promise<MediaStream | null>;
@@ -55,6 +58,11 @@ export interface UseRoomReturn {
   approveJoin: (targetPeerId: string) => void;
   denyJoin: (targetPeerId: string) => void;
   transferHost: (targetPeerId: string) => void;
+  forceMute: (targetPeerId: string, kind: 'audio' | 'video' | 'both') => void;
+  requestUnmute: (targetPeerId: string, kind: 'audio' | 'video' | 'both') => void;
+  raiseHand: () => void;
+  lowerHand: (targetPeerId?: string) => void;
+  dismissUnmuteRequest: () => void;
 }
 
 /**
@@ -80,7 +88,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [participants, setParticipants] = useState<Map<string, ParticipantState>>(new Map());
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
   const [isRoomLocked, setIsRoomLocked] = useState(false);
+  const [wasKicked, setWasKicked] = useState(false);
   const [joinRequests, setJoinRequests] = useState<Array<{ peerId: string; displayName: string }>>([]);
+  const [raisedHands, setRaisedHands] = useState<Array<{ peerId: string; displayName: string }>>([]);
+  const [unmuteRequest, setUnmuteRequest] = useState<{ kind: 'audio' | 'video' | 'both' } | null>(null);
 
   const mediaClientRef = useRef<MediasoupClient | null>(null);
   // producerId → peerId
@@ -547,8 +558,39 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('room.participant-kicked', ({ participantId: kickedId }) => {
         if (kickedId === peerId) {
+          setWasKicked(true);
           void signalingClient.leaveRoom(roomId).catch(() => undefined);
         }
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.participant-muted', ({ participantId: mutedId, kind }) => {
+        if (mutedId === peerId) {
+          if (kind === 'audio' || kind === 'both') setAudioEnabled(false);
+          if (kind === 'video' || kind === 'both') setVideoEnabled(false);
+        }
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.unmute-requested', ({ kind }) => {
+        setUnmuteRequest({ kind });
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.hand-raised', ({ participantId: raisedId, displayName: raisedName }) => {
+        setRaisedHands((prev) => {
+          if (prev.some((h) => h.peerId === raisedId)) return prev;
+          return [...prev, { peerId: raisedId, displayName: raisedName }];
+        });
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.hand-lowered', ({ participantId: loweredId }) => {
+        setRaisedHands((prev) => prev.filter((h) => h.peerId !== loweredId));
       }),
     );
 
@@ -658,6 +700,26 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     sendRaw({ type: 'room.transfer-host', roomId, peerId: targetPeerId });
   }, [sendRaw, roomId]);
 
+  const forceMute = useCallback((targetPeerId: string, kind: 'audio' | 'video' | 'both') => {
+    sendRaw({ type: 'room.force-mute', roomId, peerId: targetPeerId, kind });
+  }, [sendRaw, roomId]);
+
+  const requestUnmute = useCallback((targetPeerId: string, kind: 'audio' | 'video' | 'both') => {
+    sendRaw({ type: 'room.request-unmute', roomId, peerId: targetPeerId, kind });
+  }, [sendRaw, roomId]);
+
+  const raiseHand = useCallback(() => {
+    sendRaw({ type: 'room.raise-hand', roomId });
+  }, [sendRaw, roomId]);
+
+  const lowerHand = useCallback((targetPeerId?: string) => {
+    sendRaw({ type: 'room.lower-hand', roomId, ...(targetPeerId ? { peerId: targetPeerId } : {}) });
+  }, [sendRaw, roomId]);
+
+  const dismissUnmuteRequest = useCallback(() => {
+    setUnmuteRequest(null);
+  }, []);
+
   return {
     roomState,
     error,
@@ -670,7 +732,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     hostPeerId,
     isHost: hostPeerId === peerId,
     isRoomLocked,
+    wasKicked,
     joinRequests,
+    raisedHands,
+    unmuteRequest,
     joinRoom,
     leaveRoom,
     publishMedia,
@@ -685,5 +750,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     approveJoin,
     denyJoin,
     transferHost,
+    forceMute,
+    requestUnmute,
+    raiseHand,
+    lowerHand,
+    dismissUnmuteRequest,
   };
 }

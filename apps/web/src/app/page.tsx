@@ -1,26 +1,47 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRef, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
+import { Suspense } from 'react';
 
 export const dynamic = 'force-dynamic';
 
 type RoomType = 'public' | 'password' | 'invite_only';
 
-export default function LandingPage() {
+function LandingContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
+  const wasKicked = searchParams.get('kicked') === '1';
   const [showCode, setShowCode] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [roomType, setRoomType] = useState<RoomType>('public');
   const [roomPassword, setRoomPassword] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteList, setInviteList] = useState<Array<{ id: string; email: string; displayName: string }>>([]);
+  const [inviteSearching, setInviteSearching] = useState(false);
+  const [inviteError, setInviteError] = useState('');
   const codeRef = useRef<HTMLInputElement>(null);
 
   const goToJoin = (roomCode: string) => router.push(`/join/${encodeURIComponent(roomCode)}`);
+
+  const searchInvite = async () => {
+    const email = inviteEmail.trim();
+    if (!email) return;
+    setInviteSearching(true);
+    setInviteError('');
+    const res = await fetch(`/api/users/search?email=${encodeURIComponent(email)}`).catch(() => null);
+    setInviteSearching(false);
+    if (!res?.ok) { setInviteError('Kullanıcı bulunamadı'); return; }
+    const user = await res.json() as { id: string; email: string; displayName: string };
+    if (inviteList.some((u) => u.id === user.id)) { setInviteError('Zaten eklendi'); return; }
+    setInviteList((prev) => [...prev, user]);
+    setInviteEmail('');
+  };
 
   const startMeeting = async () => {
     if (roomType === 'password' && !roomPassword.trim()) {
@@ -36,6 +57,7 @@ export default function LandingPage() {
         body: JSON.stringify({
           type: roomType,
           ...(roomType === 'password' ? { password: roomPassword } : {}),
+          ...(inviteList.length > 0 ? { inviteUserIds: inviteList.map((u) => u.id) } : {}),
         }),
       });
       if (!res.ok) throw new Error('create failed');
@@ -72,7 +94,13 @@ export default function LandingPage() {
           <Image src="/logo-only.png" width={30} height={30} alt="Link" style={{ objectFit: 'contain' }} />
           <span style={{ color: 'white', fontWeight: 700, fontSize: 17, letterSpacing: '-0.02em' }}>Link</span>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {session && (
+            <button onClick={() => router.push('/contacts')}
+              style={{ padding: '7px 14px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Rehber
+            </button>
+          )}
           {session ? (
             <button
               onClick={() => router.push('/profile')}
@@ -132,6 +160,37 @@ export default function LandingPage() {
                 onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
             )}
+
+            {(roomType === 'invite_only' || roomType === 'password') && session && (
+              <div style={{ marginBottom: 12 }}>
+                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Davetliler</p>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  <input type="email" placeholder="Email ile ara" value={inviteEmail}
+                    onChange={(e) => { setInviteEmail(e.target.value); setInviteError(''); }}
+                    onKeyDown={(e) => e.key === 'Enter' && void searchInvite()}
+                    style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', color: 'white', fontSize: 12, outline: 'none', fontFamily: 'Inter,sans-serif' }}
+                    onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+                  />
+                  <button onClick={() => void searchInvite()} disabled={inviteSearching}
+                    style={{ padding: '8px 12px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 8, color: '#93c5fd', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+                    {inviteSearching ? '…' : 'Ekle'}
+                  </button>
+                </div>
+                {inviteError && <p style={{ color: '#f87171', fontSize: 11, margin: '0 0 6px' }}>{inviteError}</p>}
+                {inviteList.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {inviteList.map((u) => (
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '6px 10px' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{u.displayName} <span style={{ color: 'rgba(255,255,255,0.3)' }}>({u.email})</span></span>
+                        <button onClick={() => setInviteList((prev) => prev.filter((x) => x.id !== u.id))}
+                          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {createError && <p style={{ color: '#f87171', fontSize: 12, margin: '0 0 10px', textAlign: 'center' }}>{createError}</p>}
             <button onClick={() => void startMeeting()} disabled={creating}
               style={{ width: '100%', padding: '12px', background: creating ? '#1d4ed8' : '#3B82F6', border: 'none', borderRadius: 9, color: 'white', fontSize: 14, fontWeight: 600, cursor: creating ? 'not-allowed' : 'pointer', fontFamily: 'Inter,sans-serif', opacity: creating ? 0.7 : 1 }}>
@@ -167,7 +226,22 @@ export default function LandingPage() {
           Trusted by 50,000+ teams worldwide
         </p>
       </div>
+
+      {/* Kicked notification */}
+      {wasKicked && (
+        <div style={{ position: 'fixed', top: 72, left: '50%', transform: 'translateX(-50%)', background: 'rgba(239,68,68,0.18)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 10, padding: '12px 20px', color: '#fca5a5', fontSize: 13, fontFamily: 'Inter,sans-serif', zIndex: 999 }}>
+          Odadan çıkarıldınız.
+        </div>
+      )}
     </main>
+  );
+}
+
+export default function LandingPage() {
+  return (
+    <Suspense>
+      <LandingContent />
+    </Suspense>
   );
 }
 

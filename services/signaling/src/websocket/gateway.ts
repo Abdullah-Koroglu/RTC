@@ -226,6 +226,16 @@ export class WebSocketGateway {
     }
 
     if (event.type === 'room.join') {
+      // Locked room: reject new joiners (already-joined members are unaffected)
+      if (!this.rooms.has(event.roomId, conn.connectionId) && this.rooms.isLocked(event.roomId)) {
+        this.send(conn.socket, { type: 'error', code: 'ROOM_LOCKED', message: 'This room is locked' } as Parameters<typeof this.send>[1]);
+        return;
+      }
+      // Banned peer: must go through waiting room
+      if (!this.rooms.has(event.roomId, conn.connectionId) && this.rooms.isBanned(event.roomId, conn.participantId)) {
+        this.send(conn.socket, { type: 'error', code: 'BANNED', message: 'You were removed from this room. Request to join again.' } as Parameters<typeof this.send>[1]);
+        return;
+      }
       if (!this.rooms.has(event.roomId, conn.connectionId)) {
         await this.rooms.join(event.roomId, {
           participantId: conn.participantId,
@@ -320,10 +330,11 @@ export class WebSocketGateway {
         this.send(conn.socket, { type: 'error', code: 'FORBIDDEN', message: 'Only host can kick participants' });
         return;
       }
+      this.rooms.banPeer(event.roomId, event.peerId);
       const kicked = this.connections.getByParticipantId(event.peerId);
       if (kicked) {
         this.send(kicked.socket, { type: 'room.participant-kicked', roomId: event.roomId, participantId: event.peerId });
-        kicked.socket.close(1000, 'kicked');
+        setTimeout(() => kicked.socket.close(1000, 'kicked'), 200);
       }
       this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
       return;
@@ -419,6 +430,63 @@ export class WebSocketGateway {
       }
 
       this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true });
+      return;
+    }
+
+    if (event.type === 'room.force-mute') {
+      if (!this.rooms.isHost(event.roomId, conn.participantId)) {
+        this.send(conn.socket, { type: 'error', code: 'FORBIDDEN', message: 'Only host can mute participants' } as Parameters<typeof this.send>[1]);
+        return;
+      }
+      const target = this.connections.getByParticipantId(event.peerId);
+      if (target) {
+        this.send(target.socket, { type: 'room.participant-muted', roomId: event.roomId, participantId: event.peerId, kind: event.kind });
+      }
+      // Also update Redis state
+      const patch = event.kind === 'audio' ? { micEnabled: false }
+        : event.kind === 'video' ? { cameraEnabled: false }
+        : { micEnabled: false, cameraEnabled: false };
+      await this.rooms.updateState(event.roomId, event.peerId, patch);
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true } as Parameters<typeof this.send>[1]);
+      return;
+    }
+
+    if (event.type === 'room.request-unmute') {
+      if (!this.rooms.isHost(event.roomId, conn.participantId)) {
+        this.send(conn.socket, { type: 'error', code: 'FORBIDDEN', message: 'Only host can request unmute' } as Parameters<typeof this.send>[1]);
+        return;
+      }
+      const target = this.connections.getByParticipantId(event.peerId);
+      if (target) {
+        this.send(target.socket, { type: 'room.unmute-requested', roomId: event.roomId, kind: event.kind });
+      }
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true } as Parameters<typeof this.send>[1]);
+      return;
+    }
+
+    if (event.type === 'room.raise-hand') {
+      this.rooms.raiseHand(event.roomId, conn.participantId);
+      const participants = await this.rooms.getParticipants(event.roomId);
+      const state = participants.find((p) => p.participantId === conn.participantId);
+      this.dispatcher.broadcastToRoom(event.roomId, {
+        type: 'room.hand-raised',
+        roomId: event.roomId,
+        participantId: conn.participantId,
+        displayName: state?.displayName ?? conn.participantId,
+      });
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true } as Parameters<typeof this.send>[1]);
+      return;
+    }
+
+    if (event.type === 'room.lower-hand') {
+      const targetPeer = event.peerId ?? conn.participantId;
+      this.rooms.lowerHand(event.roomId, targetPeer);
+      this.dispatcher.broadcastToRoom(event.roomId, {
+        type: 'room.hand-lowered',
+        roomId: event.roomId,
+        participantId: targetPeer,
+      });
+      this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true } as Parameters<typeof this.send>[1]);
       return;
     }
 
