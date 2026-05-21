@@ -69,7 +69,7 @@ export type InboundSignalingEvent =
 
 // Outbound event types to signaling server
 export type OutboundSignalingEvent =
-  | { type: 'room.join'; roomId: string; displayName?: string | undefined; micEnabled?: boolean | undefined; cameraEnabled?: boolean | undefined; requestId?: string | undefined }
+  | { type: 'room.join'; roomId: string; displayName?: string | undefined; micEnabled?: boolean | undefined; cameraEnabled?: boolean | undefined; password?: string | undefined; requestId?: string | undefined }
   | { type: 'room.leave'; roomId: string; requestId?: string }
   | {
       type: 'signal.relay';
@@ -245,6 +245,7 @@ export class SignalingClient {
     roomId: string,
     displayName?: string,
     initialState?: { micEnabled?: boolean; cameraEnabled?: boolean },
+    password?: string,
   ): Promise<{ participants: ParticipantState[]; hostPeerId?: string }> {
     const requestId = this.generateRequestId();
     const message: OutboundSignalingEvent = {
@@ -253,6 +254,7 @@ export class SignalingClient {
       displayName,
       ...(initialState?.micEnabled !== undefined ? { micEnabled: initialState.micEnabled } : {}),
       ...(initialState?.cameraEnabled !== undefined ? { cameraEnabled: initialState.cameraEnabled } : {}),
+      ...(password !== undefined ? { password } : {}),
       requestId,
     };
     await this.sendMessage(message);

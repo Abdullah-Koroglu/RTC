@@ -12,6 +12,7 @@ const SS_VIDEO_DEVICE = 'rtc:videoDeviceId';
 const SS_AUDIO_DEVICE = 'rtc:audioDeviceId';
 const SS_MIC_ON = 'rtc:micOn';
 const SS_CAM_ON = 'rtc:camOn';
+const SS_ROOM_PASSWORD = 'rtc:roomPassword';
 
 function getOrCreatePeerId(): string {
   const stored = sessionStorage.getItem(SS_PEER_ID);
@@ -193,7 +194,7 @@ function WaitingScreen({ roomId, displayName, peerId, onApproved, onDenied }: { 
 }
 
 /* ── Password Screen ── */
-function PasswordScreen({ roomId, onSuccess, onBack, onRequestJoin }: { roomId: string; onSuccess: () => void; onBack: () => void; onRequestJoin: () => void }) {
+function PasswordScreen({ roomId, onSuccess, onBack, onRequestJoin }: { roomId: string; onSuccess: (password: string) => void; onBack: () => void; onRequestJoin: () => void }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -207,7 +208,7 @@ function PasswordScreen({ roomId, onSuccess, onBack, onRequestJoin }: { roomId: 
     });
     const data = await res.json() as { valid?: boolean };
     setLoading(false);
-    if (data.valid) { onSuccess(); }
+    if (data.valid) { onSuccess(password); }
     else { setError('Şifre hatalı. Tekrar deneyin.'); }
   };
 
@@ -488,7 +489,7 @@ export default function JoinLobbyPage() {
   if (accessPhase === 'denied') return <GateScreen title="Reddedildiniz" text="Host katılım isteğinizi reddetti." />;
   if (accessPhase === 'password') return (
     <PasswordScreen roomId={roomId}
-      onSuccess={() => setAccessPhase('lobby')}
+      onSuccess={(pw) => { sessionStorage.setItem(SS_ROOM_PASSWORD, pw); setAccessPhase('lobby'); }}
       onBack={() => router.back()}
       onRequestJoin={() => setAccessPhase('waiting')}
     />

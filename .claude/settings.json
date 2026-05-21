@@ -25,7 +25,8 @@
       "Bash(ssh -o BatchMode=yes root@vm446466 \"docker exec rtc-api-prod ls /repo/services/api/dist/\")",
       "Bash(git push *)",
       "Bash(rm -rf \"c:/Users/abdullahkoroglu/Documents/sources/DIS/RTC/apps/web/src/app/api/rooms/[roomCode]\" && echo \"deleted\")",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(pnpm --filter @repo/signaling exec tsc --noEmit)"
     ],
     "additionalDirectories": [
       "c:\\Users\\abdullahkoroglu\\Documents\\sources\\DIS\\RTC\\apps\\web\\src\\app\\api\\rooms\\[roomCode]"

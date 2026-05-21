@@ -112,6 +112,14 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   useEffect(() => { remoteStreamsRef.current = remoteStreams; }, [remoteStreams]);
 
+  // Always-current refs so the reconnect handler reads current stream values
+  // without those streams being in the effect's dependency array (which would
+  // cause the handler to be torn down and re-registered mid-recovery).
+  const localStreamRef = useRef<MediaStream | null>(null);
+  useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  useEffect(() => { screenStreamRef.current = screenStream; }, [screenStream]);
+
   const signalingOptions = {
     participantId: peerId,
     autoConnect: true,
@@ -149,6 +157,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
 
       await initializeMediasoup();
+      const roomPassword = typeof window !== 'undefined' ? (sessionStorage.getItem('rtc:roomPassword') ?? undefined) : undefined;
       const { participants: initialParticipants, hostPeerId: initialHostPeerId } = await signalingClient.joinRoom(
         roomId,
         displayName ?? peerId,
@@ -156,6 +165,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           ...(initialMicEnabled !== undefined ? { micEnabled: initialMicEnabled } : {}),
           ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
         },
+        roomPassword,
       );
       const initialMap = new Map(initialParticipants.map((p) => [p.participantId, p]));
       // Apply any pending photos that arrived before participants map was populated
@@ -483,12 +493,18 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   }, [signalingClient, roomState, joinRoom]);
 
   // Recover room + media after signaling reconnect so offline/online transitions are seamless.
+  // localStream/screenStream are intentionally read via refs, NOT included in the dep array —
+  // they change inside this handler itself, which would otherwise tear down and re-register the
+  // listener mid-recovery and leave a stale async closure running in parallel.
   useEffect(() => {
     if (!signalingClient || roomState !== 'joined') return;
+
+    let cancelled = false;
 
     const unsub = signalingClient.on('reconnect.succeeded', () => {
       void (async () => {
         try {
+          const roomPassword = typeof window !== 'undefined' ? (sessionStorage.getItem('rtc:roomPassword') ?? undefined) : undefined;
           const { participants: freshParticipants, hostPeerId: freshHostPeerId } = await signalingClient.joinRoom(
             roomId,
             displayName ?? peerId,
@@ -496,7 +512,9 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
               ...(initialMicEnabled !== undefined ? { micEnabled: initialMicEnabled } : {}),
               ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
             },
+            roomPassword,
           );
+          if (cancelled) return;
 
           const freshMap = new Map(freshParticipants.map((p) => [p.participantId, p]));
           for (const [pid, queuedPhoto] of pendingPhotosRef.current) {
@@ -518,14 +536,15 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
             await mediaClientRef.current.close();
             mediaClientRef.current = null;
           }
+          if (cancelled) return;
 
-          if (localStream) {
-            localStream.getTracks().forEach((track) => track.stop());
+          if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach((track) => track.stop());
           }
           setLocalStream(null);
 
-          if (screenStream) {
-            screenStream.getTracks().forEach((track) => track.stop());
+          if (screenStreamRef.current) {
+            screenStreamRef.current.getTracks().forEach((track) => track.stop());
           }
           setScreenStream(null);
           setIsScreenSharing(false);
@@ -535,22 +554,28 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           screenProducerKeysRef.current.clear();
 
           await initializeMediasoup();
+          if (cancelled) return;
 
           const republished = await publishMedia({ audio: true, video: true });
+          if (cancelled) return;
           if (republished) {
             setAudioEnabled(localAudioEnabled);
             setVideoEnabled(localVideoEnabled);
           }
 
           await reconcile();
+          if (cancelled) return;
           await syncRemoteProducers();
         } catch (err) {
-          setError(err instanceof Error ? err : new Error('Failed to recover room after reconnect'));
+          if (!cancelled) setError(err instanceof Error ? err : new Error('Failed to recover room after reconnect'));
         }
       })();
     });
 
-    return unsub;
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, [
     signalingClient,
     roomState,
@@ -559,8 +584,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     peerId,
     initialMicEnabled,
     initialCameraEnabled,
-    localStream,
-    screenStream,
     localAudioEnabled,
     localVideoEnabled,
     initializeMediasoup,

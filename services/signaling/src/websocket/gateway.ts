@@ -253,15 +253,21 @@ export class WebSocketGateway {
       if (isNewJoiner && isApproved) {
         // Approved by host — consume the approval and allow through
         this.rooms.consumeApproval(event.roomId, conn.participantId);
-      } else {
+      } else if (isNewJoiner) {
         // Locked room: reject new joiners (already-joined members are unaffected)
-        if (isNewJoiner && this.rooms.isLocked(event.roomId)) {
+        if (this.rooms.isLocked(event.roomId)) {
           this.send(conn.socket, { type: 'error', code: 'ROOM_LOCKED', message: 'This room is locked' } as Parameters<typeof this.send>[1]);
           return;
         }
         // Banned peer: must go through waiting room
-        if (isNewJoiner && this.rooms.isBanned(event.roomId, conn.participantId)) {
+        if (this.rooms.isBanned(event.roomId, conn.participantId)) {
           this.send(conn.socket, { type: 'error', code: 'BANNED', message: 'You were removed from this room. Request to join again.' } as Parameters<typeof this.send>[1]);
+          return;
+        }
+        // Password-protected room: verify before allowing entry
+        const pwErr = await this.checkRoomPassword(event.roomId, conn.participantId, event.password);
+        if (pwErr) {
+          this.send(conn.socket, { type: 'error', ...(event.requestId !== undefined ? { requestId: event.requestId } : {}), code: pwErr.code, message: pwErr.message } as Parameters<typeof this.send>[1]);
           return;
         }
       }
@@ -573,6 +579,44 @@ export class WebSocketGateway {
 
       void this.evictMediasoupPeer(item.roomId, item.participant.participantId);
     }
+  }
+
+  private async checkRoomPassword(
+    roomCode: string,
+    participantId: string,
+    password: string | undefined,
+  ): Promise<{ code: string; message: string } | null> {
+    let roomInfo: { type: string; hostUserId: string | null } | null = null;
+    try {
+      const res = await fetch(`${env.API_INTERNAL_URL}/v1/rooms/${roomCode}`);
+      if (res.ok) roomInfo = await res.json() as { type: string; hostUserId: string | null };
+    } catch {
+      return null; // API unreachable — don't block the join
+    }
+
+    if (!roomInfo || roomInfo.type !== 'password') return null;
+
+    // Logged-in host's participantId === their userId (UUID) — bypass password
+    if (roomInfo.hostUserId && roomInfo.hostUserId === participantId) return null;
+
+    if (!password) {
+      return { code: 'PASSWORD_REQUIRED', message: 'This room requires a password' };
+    }
+
+    try {
+      const verifyRes = await fetch(`${env.API_INTERNAL_URL}/v1/rooms/${roomCode}/verify-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (!verifyRes.ok) return { code: 'PASSWORD_REQUIRED', message: 'This room requires a password' };
+      const { valid } = await verifyRes.json() as { valid: boolean };
+      if (!valid) return { code: 'WRONG_PASSWORD', message: 'Incorrect room password' };
+    } catch {
+      return null; // API unreachable — don't block the join
+    }
+
+    return null;
   }
 
   private notifyApiJoinDecision(roomId: string, peerId: string, action: 'approve' | 'deny'): Promise<void> {

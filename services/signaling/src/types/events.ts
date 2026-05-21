@@ -6,6 +6,7 @@ export const clientJoinRoomSchema = z.object({
   displayName: z.string().optional(),
   micEnabled: z.boolean().optional(),
   cameraEnabled: z.boolean().optional(),
+  password: z.string().optional(),
   requestId: z.string().optional(),
 });
 
