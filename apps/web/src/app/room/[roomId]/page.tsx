@@ -654,11 +654,6 @@ export default function RoomPage() {
     photo: session?.user?.image ?? null,
   });
 
-  // Helper: resolve display name from stream key
-  const resolveLabel = (key: string, suffix?: string): string => {
-    const base = participants.get(key)?.displayName ?? key;
-    return suffix ? `${base} (${suffix})` : base;
-  };
 
   // Redirect if kicked
   useEffect(() => {
@@ -710,11 +705,26 @@ export default function RoomPage() {
     setIsAudioEnabled(micOn);
     setIsVideoEnabled(camOn);
 
-    // Always request both tracks regardless of on/off state so toggling works
-    // after joining. The initial enabled state is applied after publish.
+    const audioConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      sampleRate: { ideal: 48000 },
+      channelCount: 1,   // Mono: ses gecikmesini azaltır, kaliteyi korur
+      latency: { ideal: 0.02 }, // 20ms hedef gecikme
+    };
+    const videoConstraints = {
+      width: { ideal: 1280, max: 1920 },
+      height: { ideal: 720, max: 1080 },
+      frameRate: { ideal: 24, max: 30 }, // 24fps ideal — FPS önce feda edilir
+    };
     const constraints: MediaStreamConstraints = {
-      video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
-      audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true,
+      video: videoDeviceId
+        ? { ...videoConstraints, deviceId: { exact: videoDeviceId } }
+        : videoConstraints,
+      audio: audioDeviceId
+        ? { ...audioConstraints, deviceId: { exact: audioDeviceId } }
+        : audioConstraints,
     };
 
     const applyInitialState = () => {

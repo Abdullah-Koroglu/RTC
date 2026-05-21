@@ -1,6 +1,7 @@
 'use client';
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useRef, useState, useEffect } from 'react';
+import { useCanvasVideo } from '@/hooks/useCanvasVideo';
 
 export interface VideoTileProps {
   stream: MediaStream;
@@ -115,98 +116,14 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   const initials = getInitials(label);
   const isSpeaking = useSpeaking(stream, isMicMuted === true);
   const hasVideoTracks = stream.getVideoTracks().length > 0 && cameraEnabled !== false;
-  const supportsImageCapture = typeof window !== 'undefined' && typeof (window as { ImageCapture?: unknown }).ImageCapture === 'function';
-  const canRenderVideo = hasVideoTracks && supportsImageCapture;
   const inFullscreen = isNativeFullscreen || cssFullscreen;
 
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
   }, []);
 
-  useEffect(() => {
-    if (!canRenderVideo) return;
-    const canvas = canvasRef.current;
-    const track = stream.getVideoTracks()[0];
-    const ImageCaptureCtor = (window as unknown as { ImageCapture?: new (track: MediaStreamTrack) => { grabFrame: () => Promise<ImageBitmap> } }).ImageCapture;
-    if (!canvas || !track || !ImageCaptureCtor) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const imageCapture = new ImageCaptureCtor(track);
-    let disposed = false;
-    let rafId: number | null = null;
-
-    const resizeCanvas = () => {
-      const rect = canvas.getBoundingClientRect();
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const width = Math.max(1, Math.round(rect.width * dpr));
-      const height = Math.max(1, Math.round(rect.height * dpr));
-      if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-      }
-    };
-
-    const drawCover = (bitmap: ImageBitmap) => {
-      const cw = canvas.width;
-      const ch = canvas.height;
-      const iw = bitmap.width;
-      const ih = bitmap.height;
-      if (!cw || !ch || !iw || !ih) return;
-
-      const scale = Math.max(cw / iw, ch / ih);
-      const dw = iw * scale;
-      const dh = ih * scale;
-      const dx = (cw - dw) / 2;
-      const dy = (ch - dh) / 2;
-
-      ctx.save();
-      ctx.clearRect(0, 0, cw, ch);
-      if (mirrored) {
-        ctx.translate(cw, 0);
-        ctx.scale(-1, 1);
-      }
-      ctx.drawImage(bitmap, dx, dy, dw, dh);
-      ctx.restore();
-    };
-
-    const render = async () => {
-      if (disposed) return;
-      resizeCanvas();
-      try {
-        const bitmap = await imageCapture.grabFrame();
-        drawCover(bitmap);
-        bitmap.close();
-      } catch {
-        // Ignore transient frame grab failures while tracks renegotiate.
-      }
-      if (!disposed) {
-        rafId = window.requestAnimationFrame(() => {
-          void render();
-        });
-      }
-    };
-
-    const onTrackEnded = () => {
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    };
-
-    window.addEventListener('resize', resizeCanvas);
-    track.addEventListener('ended', onTrackEnded);
-    void render();
-
-    return () => {
-      disposed = true;
-      window.removeEventListener('resize', resizeCanvas);
-      track.removeEventListener('ended', onTrackEnded);
-      if (rafId !== null) window.cancelAnimationFrame(rafId);
-    };
-  }, [stream, mirrored, canRenderVideo]);
+  // Cross-browser canvas renderer: rVFC when available, rAF fallback
+  useCanvasVideo(hasVideoTracks ? stream : null, canvasRef as React.RefObject<HTMLCanvasElement>, hasVideoTracks);
 
   useEffect(() => {
     const onChange = () => {
@@ -308,7 +225,10 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
         ref={canvasRef}
         style={{
           position: 'absolute', inset: 0, width: '100%', height: '100%',
-          display: canRenderVideo ? 'block' : 'none',
+          objectFit: 'cover',
+          transform: mirrored ? 'scaleX(-1)' : undefined,
+          willChange: 'transform',  // GPU composite hint
+          display: hasVideoTracks ? 'block' : 'none',
         }}
       />
 

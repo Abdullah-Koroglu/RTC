@@ -241,6 +241,13 @@ export class MediasoupClient {
       try {
         audioProducer = await this.sendTransport.produce({
           track: audioTrack,
+          codecOptions: {
+            opusStereo: false,       // Mono: daha az bant, ses gecikmesini azaltır
+            opusDtx: true,           // Sessizlikte bant tasarrufu
+            opusFec: true,           // Paket kaybında ses kalitesini korur
+            opusMaxPlaybackRate: 48000,
+            opusPtime: 20,           // 20ms paket süresi
+          },
           appData: { mediaTag: 'audio' },
         });
       } catch (error) {
@@ -264,6 +271,20 @@ export class MediasoupClient {
       try {
         videoProducer = await this.sendTransport.produce({
           track: videoTrack,
+          encodings: [
+            {
+              maxBitrate: 3_000_000,
+              priority: 'high',
+              networkPriority: 'high',
+              // Bant genişliği daralınca FPS düşer, çözünürlük korunur
+              degradationPreference: 'maintain-resolution',
+            },
+          ],
+          codecOptions: {
+            videoGoogleStartBitrate: 2000,
+            videoGoogleMaxBitrate: 5000,
+            videoGoogleMinBitrate: 200,
+          },
           appData: { mediaTag: 'video' },
         });
       } catch (error) {

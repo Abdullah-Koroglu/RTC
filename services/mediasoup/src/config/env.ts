@@ -46,13 +46,32 @@ const defaultCodecs = [
     mimeType: 'audio/opus',
     clockRate: 48000,
     channels: 2,
+    parameters: {
+      'useinbandfec': 1,          // FEC: paket kaybında ses kalitesini korur
+      'usedtx': 1,                // DTX: sessizlikte bant genişliği tasarrufu
+      'maxaveragebitrate': 64000, // 64kbps — ses için yeterli kalite
+      'ptime': 20,                // 20ms paket süresi
+    },
   },
+  {
+    kind: 'video',
+    mimeType: 'video/VP9',        // VP8 → VP9: daha iyi sıkıştırma, düşük bitrate'te yüksek kalite
+    clockRate: 90000,
+    parameters: {
+      'x-google-start-bitrate': 2000,
+      'x-google-max-bitrate': 5000,
+      'x-google-min-bitrate': 200,
+    },
+  },
+  // VP8 fallback — VP9 desteklemeyen tarayıcılar için
   {
     kind: 'video',
     mimeType: 'video/VP8',
     clockRate: 90000,
     parameters: {
-      'x-google-start-bitrate': 1000,
+      'x-google-start-bitrate': 2000,
+      'x-google-max-bitrate': 5000,
+      'x-google-min-bitrate': 200,
     },
   },
 ] as const;
