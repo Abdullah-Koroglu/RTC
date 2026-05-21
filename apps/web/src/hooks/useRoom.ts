@@ -108,6 +108,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   // producerId → streamKey for screen producers
   const screenProducerKeysRef = useRef<Map<string, string>>(new Map());
   const initRef = useRef(false);
+  const roomStateRef = useRef<RoomState>('idle');
+  useEffect(() => { roomStateRef.current = roomState; }, [roomState]);
   // Always-current ref so syncRemoteProducers orphan cleanup avoids stale closure
   const remoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
   useEffect(() => { remoteStreamsRef.current = remoteStreams; }, [remoteStreams]);
@@ -231,7 +233,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   }, [remoteStreams, localStream, screenStream, signalingClient, roomId]);
 
   const syncRemoteProducers = useCallback(async () => {
-    if (!mediaClientRef.current || roomState !== 'joined') return;
+    if (!mediaClientRef.current || roomStateRef.current !== 'joined') return;
 
     let producers;
     try {
@@ -337,7 +339,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         return updated;
       });
     }
-  }, [peerId, roomState]);
+  }, [peerId, roomId]);
 
   const publishMedia = useCallback(
     async (source: MediaStreamConstraints | MediaStream = { audio: true, video: true }): Promise<MediaStream | null> => {
@@ -508,6 +510,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     const unsub = signalingClient.on('reconnect.succeeded', () => {
       void (async () => {
         try {
+          setError(null);
+
           const roomPassword = typeof window !== 'undefined' ? (sessionStorage.getItem('rtc:roomPassword') ?? undefined) : undefined;
           const { participants: freshParticipants, hostPeerId: freshHostPeerId } = await signalingClient.joinRoom(
             roomId,
@@ -536,6 +540,18 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           });
           setRemoteStreams(new Map());
 
+          // Preserve user media without a fresh permission prompt.
+          let preservedLocalStream: MediaStream | null = null;
+          if (localStreamRef.current) {
+            const clonedTracks = localStreamRef.current
+              .getTracks()
+              .filter((track) => track.readyState === 'live')
+              .map((track) => track.clone());
+            if (clonedTracks.length > 0) {
+              preservedLocalStream = new MediaStream(clonedTracks);
+            }
+          }
+
           if (mediaClientRef.current) {
             await mediaClientRef.current.close();
             mediaClientRef.current = null;
@@ -560,16 +576,37 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           await initializeMediasoup();
           if (cancelled) return;
 
-          const republished = await publishMedia({ audio: true, video: true });
+          let republished = preservedLocalStream
+            ? await publishMedia(preservedLocalStream)
+            : await publishMedia({ audio: true, video: true });
+          if (!republished && preservedLocalStream) {
+            // Fallback to fresh capture if cloned tracks cannot be produced.
+            republished = await publishMedia({ audio: true, video: true });
+          }
           if (cancelled) return;
           if (republished) {
             setAudioEnabled(localAudioEnabled);
             setVideoEnabled(localVideoEnabled);
           }
+          if (!republished && preservedLocalStream) {
+            preservedLocalStream.getTracks().forEach((track) => track.stop());
+          }
 
           await reconcile();
           if (cancelled) return;
-          await syncRemoteProducers();
+
+          const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            await syncRemoteProducers();
+            if (cancelled) return;
+
+            const hasRemoteStreams = remoteStreamsRef.current.size > 0;
+            const hasKnownRemoteParticipants = Array.from(freshMap.keys()).some((id) => id !== peerId);
+            if (hasRemoteStreams || !hasKnownRemoteParticipants) {
+              break;
+            }
+            await sleep(450);
+          }
         } catch (err) {
           if (!cancelled) setError(err instanceof Error ? err : new Error('Failed to recover room after reconnect'));
         }

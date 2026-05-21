@@ -19,6 +19,7 @@ export function useCanvasVideo(
   stream: MediaStream | null,
   canvasRef: React.RefObject<HTMLCanvasElement>,
   active = true,
+  muted = true,
 ): void {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -31,9 +32,10 @@ export function useCanvasVideo(
       videoRef.current = document.createElement('video');
       videoRef.current.autoplay = true;
       videoRef.current.playsInline = true;
-      videoRef.current.muted = true;
+      videoRef.current.muted = muted;
     }
     const video = videoRef.current;
+    video.muted = muted;
     video.srcObject = stream;
     void video.play().catch(() => undefined);
 
@@ -61,7 +63,7 @@ export function useCanvasVideo(
       video.srcObject = null;
       rafRef.current = 0;
     };
-  }, [stream, canvasRef, active]);
+  }, [stream, canvasRef, active, muted]);
 
   useEffect(() => {
     return () => {

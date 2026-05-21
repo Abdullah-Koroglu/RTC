@@ -123,7 +123,7 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   }, []);
 
   // Cross-browser canvas renderer: rVFC when available, rAF fallback
-  useCanvasVideo(hasVideoTracks ? stream : null, canvasRef as React.RefObject<HTMLCanvasElement>, hasVideoTracks);
+  useCanvasVideo(hasVideoTracks ? stream : null, canvasRef as React.RefObject<HTMLCanvasElement>, hasVideoTracks, muted);
 
   useEffect(() => {
     const onChange = () => {
