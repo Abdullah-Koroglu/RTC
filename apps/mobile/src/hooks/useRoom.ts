@@ -65,7 +65,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const { client: signalingClient, isConnected: isSignalingConnected } = useSignaling({
     participantId: peerId,
     autoConnect: true,
-    reconnect: { maxAttempts: 5, baseDelayMs: 1000, maxDelayMs: 10000 },
+    reconnect: { maxAttempts: Number.MAX_SAFE_INTEGER, baseDelayMs: 1000, maxDelayMs: 10000 },
   });
 
   const initializeMediasoup = useCallback(async () => {
@@ -375,6 +375,68 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
     return () => listeners.forEach((u) => u());
   }, [signalingClient, roomState, peerId, syncRemoteProducers, reconcile, roomId]);
+
+  // Recover room + media after signaling reconnect so offline/online transitions are seamless.
+  useEffect(() => {
+    if (!signalingClient || roomState !== 'joined') return;
+
+    const unsub = signalingClient.on('reconnect.succeeded', () => {
+      void (async () => {
+        try {
+          const joined = await signalingClient.joinRoom(roomId, displayName ?? peerId, {
+            ...(initialMicEnabled !== undefined ? { micEnabled: initialMicEnabled } : {}),
+            ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
+          });
+
+          const freshParticipants = Array.isArray(joined)
+            ? joined
+            : ((joined as { participants?: ParticipantState[] }).participants ?? []);
+          setParticipants(new Map(freshParticipants.map((p) => [p.participantId, p])));
+
+          remoteStreamsRef.current.forEach((stream) => {
+            stream.getTracks().forEach((track) => track.stop());
+          });
+          setRemoteStreams(new Map());
+
+          if (mediaClientRef.current) {
+            await mediaClientRef.current.close();
+            mediaClientRef.current = null;
+          }
+
+          if (localStream) {
+            localStream.getTracks().forEach((track) => track.stop());
+          }
+          setLocalStream(null);
+
+          producerOwnerRef.current.clear();
+          subscribedProducerIdsRef.current.clear();
+          screenProducerKeysRef.current.clear();
+
+          await initializeMediasoup();
+          await publishMedia({ audio: true, video: true });
+          await reconcile();
+          await syncRemoteProducers();
+        } catch (err) {
+          setError(err instanceof Error ? err : new Error('Failed to recover room after reconnect'));
+        }
+      })();
+    });
+
+    return unsub;
+  }, [
+    signalingClient,
+    roomState,
+    roomId,
+    displayName,
+    peerId,
+    initialMicEnabled,
+    initialCameraEnabled,
+    localStream,
+    initializeMediasoup,
+    publishMedia,
+    reconcile,
+    syncRemoteProducers,
+  ]);
 
   // Broadcast photo on join
   useEffect(() => {

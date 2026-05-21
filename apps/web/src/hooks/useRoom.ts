@@ -116,7 +116,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     participantId: peerId,
     autoConnect: true,
     reconnect: {
-      maxAttempts: 5,
+      maxAttempts: Number.MAX_SAFE_INTEGER,
       baseDelayMs: 1000,
       maxDelayMs: 10000,
     },
@@ -481,6 +481,95 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     });
     return unsub;
   }, [signalingClient, roomState, joinRoom]);
+
+  // Recover room + media after signaling reconnect so offline/online transitions are seamless.
+  useEffect(() => {
+    if (!signalingClient || roomState !== 'joined') return;
+
+    const unsub = signalingClient.on('reconnect.succeeded', () => {
+      void (async () => {
+        try {
+          const { participants: freshParticipants, hostPeerId: freshHostPeerId } = await signalingClient.joinRoom(
+            roomId,
+            displayName ?? peerId,
+            {
+              ...(initialMicEnabled !== undefined ? { micEnabled: initialMicEnabled } : {}),
+              ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
+            },
+          );
+
+          const freshMap = new Map(freshParticipants.map((p) => [p.participantId, p]));
+          for (const [pid, queuedPhoto] of pendingPhotosRef.current) {
+            const p = freshMap.get(pid);
+            if (p) {
+              freshMap.set(pid, { ...p, photo: queuedPhoto });
+              pendingPhotosRef.current.delete(pid);
+            }
+          }
+          setParticipants(freshMap);
+          if (freshHostPeerId) setHostPeerId(freshHostPeerId);
+
+          remoteStreamsRef.current.forEach((stream) => {
+            stream.getTracks().forEach((track) => track.stop());
+          });
+          setRemoteStreams(new Map());
+
+          if (mediaClientRef.current) {
+            await mediaClientRef.current.close();
+            mediaClientRef.current = null;
+          }
+
+          if (localStream) {
+            localStream.getTracks().forEach((track) => track.stop());
+          }
+          setLocalStream(null);
+
+          if (screenStream) {
+            screenStream.getTracks().forEach((track) => track.stop());
+          }
+          setScreenStream(null);
+          setIsScreenSharing(false);
+
+          producerOwnerRef.current.clear();
+          subscribedProducerIdsRef.current.clear();
+          screenProducerKeysRef.current.clear();
+
+          await initializeMediasoup();
+
+          const republished = await publishMedia({ audio: true, video: true });
+          if (republished) {
+            setAudioEnabled(localAudioEnabled);
+            setVideoEnabled(localVideoEnabled);
+          }
+
+          await reconcile();
+          await syncRemoteProducers();
+        } catch (err) {
+          setError(err instanceof Error ? err : new Error('Failed to recover room after reconnect'));
+        }
+      })();
+    });
+
+    return unsub;
+  }, [
+    signalingClient,
+    roomState,
+    roomId,
+    displayName,
+    peerId,
+    initialMicEnabled,
+    initialCameraEnabled,
+    localStream,
+    screenStream,
+    localAudioEnabled,
+    localVideoEnabled,
+    initializeMediasoup,
+    publishMedia,
+    setAudioEnabled,
+    setVideoEnabled,
+    reconcile,
+    syncRemoteProducers,
+  ]);
 
   // Signaling event listeners
   useEffect(() => {

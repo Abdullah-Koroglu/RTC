@@ -170,14 +170,14 @@ function LandingContent() {
               ))}
             </div>
             {roomType === 'password' && (
-              <input type="password" placeholder="Toplantı şifresi (min 4 karakter)" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)}
+              <input className='masked' placeholder="Toplantı şifresi (min 4 karakter)" value={roomPassword} onChange={(e) => setRoomPassword(e.target.value)}
                 style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 9, padding: '10px 12px', color: 'white', fontSize: 13, outline: 'none', fontFamily: 'Inter,sans-serif', marginBottom: 12 }}
                 onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
                 onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
               />
             )}
 
-            {(roomType === 'invite_only' || roomType === 'password') && session && (
+            {(roomType === 'invite_only') && session && (
               <div style={{ marginBottom: 12 }}>
                 <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Davetliler</p>
 
