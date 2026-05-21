@@ -2,7 +2,8 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
+import { consumeCachedStream } from '@/lib/streamCache';
 import Image from 'next/image';
 import { useRoom } from '@/hooks/useRoom';
 import { useDevices } from '@/hooks/useDevices';
@@ -562,6 +563,128 @@ function ToastStack({ toasts, isMobile = false }: { toasts: ToastItem[]; isMobil
   );
 }
 
+/* ── Profile Modal ── */
+function ProfileModal({ onClose }: { onClose: () => void }) {
+  const { data: session, update: updateSession } = useSession();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState(() => session?.user?.name ?? (typeof window !== 'undefined' ? sessionStorage.getItem(SS_DISPLAY_NAME) ?? '' : ''));
+  const [photo, setPhoto] = useState<string | null>(session?.user?.image ?? null);
+  const [saved, setSaved] = useState(false);
+
+  const initials = name.trim()
+    ? name.trim().split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    : '?';
+
+  const loadFile = (file: File | null | undefined) => {
+    if (!file?.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (e) => setPhoto(e.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    sessionStorage.setItem(SS_DISPLAY_NAME, name.trim());
+    await updateSession({ user: { ...session?.user, name: name.trim(), image: photo } });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2400);
+  };
+
+  const provider = session?.user?.provider as string | undefined;
+  const PROVIDER_COLOR: Record<string, string> = { google: '#4285F4', github: 'rgba(255,255,255,0.6)', instagram: '#E1306C' };
+  const PROVIDER_LABEL: Record<string, string> = { google: 'Google', github: 'GitHub', instagram: 'Instagram' };
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 700, fontFamily: 'Inter,sans-serif', padding: 16 }}
+    >
+      <div style={{ background: 'rgba(22,27,42,0.98)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: '32px 32px 28px', width: '100%', maxWidth: 360, boxShadow: '0 24px 80px rgba(0,0,0,0.7)', position: 'relative' }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: 14, right: 14, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.5)' }}>
+          <IcX s={14} />
+        </button>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <h2 style={{ color: 'white', fontSize: 18, fontWeight: 700, margin: '0 0 4px', letterSpacing: '-0.01em' }}>Profilin</h2>
+          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 13, margin: 0 }}>Adını ve fotoğrafını güncelle</p>
+        </div>
+
+        {/* Avatar picker */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 22 }}>
+          <div
+            role="button" tabIndex={0}
+            onClick={() => fileRef.current?.click()}
+            onKeyDown={(e) => e.key === 'Enter' && fileRef.current?.click()}
+            style={{ position: 'relative', cursor: 'pointer' }}
+          >
+            <div style={{ width: 96, height: 96, borderRadius: '50%', overflow: 'hidden', border: '2.5px solid rgba(59,130,246,0.4)', boxShadow: '0 0 0 5px rgba(59,130,246,0.1)' }}>
+              {photo
+                ? <Image src={photo} width={96} height={96} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg,#3B82F6dd,#3B82F677)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700, color: 'white' }}>{initials}</div>
+              }
+            </div>
+            <div style={{ position: 'absolute', bottom: 2, right: 2, width: 28, height: 28, borderRadius: '50%', background: '#3B82F6', border: '2.5px solid rgba(22,27,42,0.98)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </div>
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => loadFile(e.target.files?.[0])} />
+          {photo && (
+            <button onClick={() => setPhoto(null)} style={{ background: 'none', border: 'none', color: 'rgba(239,68,68,0.65)', cursor: 'pointer', fontSize: 12, marginTop: 6, fontFamily: 'inherit' }}>
+              Fotoğrafı kaldır
+            </button>
+          )}
+        </div>
+
+        {/* Name */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>Görünen Ad</label>
+          <input
+            type="text" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void handleSave()}
+            placeholder="Adın"
+            style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '10px 12px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+            onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
+            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+          />
+        </div>
+
+        {/* Email + provider */}
+        {session?.user?.email && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: '10px 12px', marginBottom: 20 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.36)', marginBottom: 2 }}>E-posta</div>
+              <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13 }}>{session.user.email}</div>
+            </div>
+            {provider && (
+              <span style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 500, color: PROVIDER_COLOR[provider] ?? 'rgba(255,255,255,0.5)' }}>
+                {PROVIDER_LABEL[provider] ?? provider}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Save */}
+        <button
+          onClick={() => void handleSave()} disabled={!name.trim()}
+          style={{ width: '100%', padding: '12px', borderRadius: 10, border: saved ? '1px solid rgba(34,197,94,0.35)' : 'none', background: saved ? 'rgba(34,197,94,0.18)' : name.trim() ? '#3B82F6' : 'rgba(59,130,246,0.22)', color: saved ? '#4ADE80' : name.trim() ? 'white' : 'rgba(255,255,255,0.3)', fontSize: 14, fontWeight: 600, cursor: name.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', marginBottom: 8 }}
+        >
+          {saved ? '✓ Kaydedildi!' : 'Kaydet'}
+        </button>
+
+        {/* Sign out */}
+        {session && (
+          <button
+            onClick={() => void signOut({ callbackUrl: '/' })}
+            style={{ width: '100%', padding: '11px', background: 'transparent', border: '1px solid rgba(239,68,68,0.18)', borderRadius: 10, color: 'rgba(239,68,68,0.55)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.07)'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(239,68,68,0.85)'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; (e.currentTarget as HTMLButtonElement).style.color = 'rgba(239,68,68,0.55)'; }}
+          >
+            Çıkış Yap
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Room Page ── */
 export default function RoomPage() {
   const router = useRouter();
@@ -575,10 +698,13 @@ export default function RoomPage() {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [hasPublished, setHasPublished] = useState(false);
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
+  const previewStreamRef = useRef<MediaStream | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [breakoutOpen, setBreakoutOpen] = useState(false);
   const [hostPanelOpen, setHostPanelOpen] = useState(false);
   const [myHandRaised, setMyHandRaised] = useState(false);
@@ -594,6 +720,23 @@ export default function RoomPage() {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  // Verify room exists — redirect to join page (which shows "not found") if 404.
+  useEffect(() => {
+    fetch(`/api/rooms/${encodeURIComponent(roomId)}`)
+      .then((r) => { if (r.status === 404) router.replace(`/join/${encodeURIComponent(roomId)}`); })
+      .catch(() => {});
+  }, [roomId, router]);
+
+  // Grab the lobby preview stream immediately so the user sees their own video
+  // as soon as the room UI appears, before the signaling handshake completes.
+  useEffect(() => {
+    const s = consumeCachedStream();
+    if (s) {
+      previewStreamRef.current = s;
+      setPreviewStream(s);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const canScreenShare = typeof window !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function';
 
@@ -714,9 +857,11 @@ export default function RoomPage() {
       latency: { ideal: 0.02 }, // 20ms hedef gecikme
     };
     const videoConstraints = {
-      width: { ideal: 1280, max: 1920 },
-      height: { ideal: 720, max: 1080 },
-      frameRate: { ideal: 24, max: 30 }, // 24fps ideal — FPS önce feda edilir
+      // min değerler: çok kötü ağda 360p, 240p'ye kadar düşebilir
+      width:  { min: 320, ideal: 1280, max: 1920 },
+      height: { min: 240, ideal: 720,  max: 1080 },
+      // 5fps minimum: FPS önce bu seviyeye düşer, sonra çözünürlük de düşmeye başlar
+      frameRate: { min: 5, ideal: 24, max: 30 },
     };
     const constraints: MediaStreamConstraints = {
       video: videoDeviceId
@@ -732,13 +877,33 @@ export default function RoomPage() {
       setVideoEnabled(camOn);
     };
 
-    void publishMedia(constraints).then((stream) => {
-      if (stream) { setHasPublished(true); applyInitialState(); }
-    }).catch(() => {
-      void publishMedia({ video: true, audio: true }).then((stream) => {
+    // Reuse the lobby video track (grabbed earlier on mount) to avoid a second
+    // getUserMedia call on mobile, which would trigger another camera permission prompt.
+    const cachedStream = previewStreamRef.current;
+    previewStreamRef.current = null;
+    const getSource = async (): Promise<MediaStreamConstraints | MediaStream> => {
+      if (cachedStream && cachedStream.getVideoTracks().length > 0) {
+        // Lobby only captured video; add audio separately (audio permission is less intrusive).
+        if (micOn) {
+          try {
+            const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints, video: false });
+            audioOnly.getAudioTracks().forEach((t) => cachedStream.addTrack(t));
+          } catch { /* proceed without mic */ }
+        }
+        return cachedStream;
+      }
+      return constraints;
+    };
+
+    void getSource().then((source) =>
+      publishMedia(source).then((stream) => {
         if (stream) { setHasPublished(true); applyInitialState(); }
-      });
-    });
+      }).catch(() => {
+        void publishMedia({ video: true, audio: true }).then((stream) => {
+          if (stream) { setHasPublished(true); applyInitialState(); }
+        });
+      })
+    );
   }, [roomState, hasPublished, publishMedia, setAudioEnabled, setVideoEnabled]);
 
   // Toast on remote peer join/leave
@@ -781,8 +946,12 @@ export default function RoomPage() {
     if (last && !last.isSelf) setUnreadCount((n) => n + 1);
   }, [chatMessages, isChatOpen]);
 
+  // Show preview stream while signaling handshake is in progress; switch to
+  // localStream (set by publishMedia) once producers are established.
+  const displayLocalStream = localStream ?? previewStream;
+
   const remoteEntries = useMemo(() => Array.from(remoteStreams.entries()), [remoteStreams]);
-  const participantCount = (localStream ? 1 : 0) + remoteEntries.filter(([k]) => !k.endsWith(':screen')).length;
+  const participantCount = (displayLocalStream ? 1 : 0) + remoteEntries.filter(([k]) => !k.endsWith(':screen')).length;
   const hasRemotes = remoteEntries.filter(([k]) => !k.endsWith(':screen')).length > 0;
   const isWaiting = roomState === 'joined' && !hasRemotes;
 
@@ -857,7 +1026,7 @@ export default function RoomPage() {
         screenSharing={isScreenSharing}
         onSettings={() => setSettingsOpen(true)}
         onShortcuts={() => setShortcutsOpen(true)}
-        onProfile={() => router.push('/profile')}
+        onProfile={() => setProfileOpen(true)}
         userName={displayName || peerId}
         userPhoto={userPhoto}
         isMobile={isMobile}
@@ -866,8 +1035,14 @@ export default function RoomPage() {
       {/* Main content area */}
       <div style={{ flex: 1, display: 'flex', paddingTop: 56, paddingBottom: 82, transition: 'padding-right 0.26s cubic-bezier(0.4,0,0.2,1)', paddingRight: chatW || breakoutW, minHeight: 0, overflow: 'hidden' }}>
         {roomState === 'joining' && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            {/* Show preview stream immediately while connecting so there's no blank wait */}
+            {previewStream && (
+              <div style={{ position: 'absolute', inset: 0 }}>
+                <VideoTile stream={previewStream} label={displayName || peerId} muted mirrored isMicMuted={!isAudioEnabled} photo={userPhoto} />
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6, position: 'relative', zIndex: 2 }}>
               {[0, 1, 2].map((i) => (
                 <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: '#3B82F6', display: 'block', animation: `dotBounce 1.2s ease-in-out ${i * 0.16}s infinite` }} />
               ))}
@@ -875,26 +1050,26 @@ export default function RoomPage() {
           </div>
         )}
 
-        {roomState === 'joined' && isWaiting && localStream && (
+        {roomState === 'joined' && isWaiting && displayLocalStream && (
           <div style={{ flex: 1, display: 'flex', gap: 8, padding: '10px', minHeight: 0, position: 'relative' }}>
             <WaitingRoom roomId={roomId} isMobile={isMobile} />
             {/* PiP self preview */}
             <div style={{ position: 'absolute', bottom: 16, right: 16, width: isMobile ? 130 : 200, aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(59,130,246,0.5)', boxShadow: '0 0 0 3px rgba(59,130,246,0.2)' }}>
-              <VideoTile stream={localStream} label={`${displayName} (You)`} muted mirrored isMicMuted={!isAudioEnabled} photo={userPhoto} />
+              <VideoTile stream={displayLocalStream} label={`${displayName} (You)`} muted mirrored isMicMuted={!isAudioEnabled} photo={userPhoto} />
             </div>
           </div>
         )}
 
-        {roomState === 'joined' && isWaiting && !localStream && (
+        {roomState === 'joined' && isWaiting && !displayLocalStream && (
           <WaitingRoom roomId={roomId} isMobile={isMobile} />
         )}
 
         {roomState === 'joined' && !isWaiting && isScreenSharing && screenStream && (
-          <ScreenShareView screenStream={screenStream} localStream={localStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} participants={participants} isMobile={isMobile} localPhoto={userPhoto} />
+          <ScreenShareView screenStream={screenStream} localStream={displayLocalStream} remoteEntries={remoteEntries} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} participants={participants} isMobile={isMobile} localPhoto={userPhoto} />
         )}
 
         {roomState === 'joined' && !isWaiting && !(isScreenSharing && screenStream) && (
-          <VideoGrid localStream={localStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} participants={participants} isMobile={isMobile} localPhoto={userPhoto} />
+          <VideoGrid localStream={displayLocalStream} remoteEntries={remoteEntries} screenStream={screenStream} displayName={displayName} isAudioEnabled={isAudioEnabled} isVideoEnabled={isVideoEnabled} participants={participants} isMobile={isMobile} localPhoto={userPhoto} />
         )}
 
         {roomState === 'error' && (
@@ -1015,6 +1190,7 @@ export default function RoomPage() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} onRepublish={(c, m) => void onRepublish(c, m)} />}
       {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
+      {profileOpen && <ProfileModal onClose={() => setProfileOpen(false)} />}
 
       {/* Join request modal (host only) */}
       {isHost && newJoinRequestAlert && (

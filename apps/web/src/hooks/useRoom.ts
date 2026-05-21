@@ -49,7 +49,7 @@ export interface UseRoomReturn {
   unmuteRequest: { kind: 'audio' | 'video' | 'both' } | null;
   joinRoom: () => Promise<void>;
   leaveRoom: () => Promise<void>;
-  publishMedia: (constraints?: MediaStreamConstraints) => Promise<MediaStream | null>;
+  publishMedia: (source?: MediaStreamConstraints | MediaStream) => Promise<MediaStream | null>;
   unpublishMedia: (kind: 'audio' | 'video') => void;
   setAudioEnabled: (enabled: boolean) => void;
   setVideoEnabled: (enabled: boolean) => void;
@@ -336,10 +336,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   }, [peerId, roomState]);
 
   const publishMedia = useCallback(
-    async (constraints: MediaStreamConstraints = { audio: true, video: true }): Promise<MediaStream | null> => {
+    async (source: MediaStreamConstraints | MediaStream = { audio: true, video: true }): Promise<MediaStream | null> => {
       try {
         if (!mediaClientRef.current) throw new Error('Mediasoup client not initialized');
-        const stream = await mediaClientRef.current.publishMedia(constraints);
+        const stream = await mediaClientRef.current.publishMedia(source);
         setLocalStream(stream);
         await syncRemoteProducers();
         return stream;

@@ -210,24 +210,30 @@ export class MediasoupClient {
   }
 
   /**
-   * Publish local media (camera and/or microphone)
+   * Publish local media (camera and/or microphone).
+   * Accepts either MediaStreamConstraints or an already-acquired MediaStream
+   * (the latter avoids a second getUserMedia call on mobile, preventing repeated permission prompts).
    */
-  async publishMedia(constraints: MediaStreamConstraints = { audio: true, video: true }): Promise<MediaStream> {
+  async publishMedia(source: MediaStreamConstraints | MediaStream = { audio: true, video: true }): Promise<MediaStream> {
     if (!this.sendTransport || !this.device) {
       throw new Error('Transports not initialized');
     }
 
     let stream: MediaStream;
-    try {
-      stream = await this.createLocalMediaStream(constraints);
-    } catch (error) {
-      console.error('Failed to create local media stream', {
-        roomId: this.options.roomId,
-        peerId: this.options.peerId,
-        constraints,
-        error,
-      });
-      throw error;
+    if (source instanceof MediaStream) {
+      stream = source;
+    } else {
+      try {
+        stream = await this.createLocalMediaStream(source);
+      } catch (error) {
+        console.error('Failed to create local media stream', {
+          roomId: this.options.roomId,
+          peerId: this.options.peerId,
+          constraints: source,
+          error,
+        });
+        throw error;
+      }
     }
 
     this.localStream = { stream };
@@ -274,9 +280,11 @@ export class MediasoupClient {
           encodings: [
             {
               maxBitrate: 3_000_000,
+              // 50kbps'in altında çözünürlük de düşmeye başlar (480→360→240p)
+              // Bu değer üzerinde ise 720p korunur, sadece FPS düşer
               priority: 'high',
               networkPriority: 'high',
-              // Bant genişliği daralınca FPS düşer, çözünürlük korunur
+              // FPS önce feda edilir; 5fps sınırına gelince çözünürlük de düşmeye başlar
               degradationPreference: 'maintain-resolution',
             },
           ],

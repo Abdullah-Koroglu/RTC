@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import { useDevices } from '@/hooks/useDevices';
+import { setCachedStream } from '@/lib/streamCache';
 
 const SS_DISPLAY_NAME = 'rtc:displayName';
 const SS_PEER_ID = 'rtc:peerId';
@@ -461,8 +462,12 @@ export default function JoinLobbyPage() {
     setNameError('');
 
     if (previewStreamRef.current) {
-      previewStreamRef.current.getTracks().forEach((t) => t.stop());
+      // Hand the video track to the room page so it can reuse it without
+      // calling getUserMedia again (avoids repeated camera permission prompts on mobile).
+      setCachedStream(previewStreamRef.current);
       previewStreamRef.current = null;
+    } else {
+      setCachedStream(null);
     }
 
     const peerId = saveSessionPrefs();

@@ -2,21 +2,18 @@
 
 import { useEffect, useRef } from 'react';
 
-type VideoWithRVFC = HTMLVideoElement & {
-  requestVideoFrameCallback: (cb: (now: DOMHighResTimeStamp, meta: { mediaTime: number }) => void) => number;
-  cancelVideoFrameCallback: (handle: number) => void;
-};
-
 /**
- * Renders a MediaStream onto a canvas element.
+ * Renders a MediaStream onto a canvas element using requestAnimationFrame.
  *
- * Uses requestVideoFrameCallback (rVFC) when available — fires exactly once per
- * decoded video frame, avoiding unnecessary redraws and saving CPU vs rAF.
- * Falls back to requestAnimationFrame with a currentTime change check.
+ * We intentionally avoid requestVideoFrameCallback (rVFC) here: the spec requires
+ * the video element to be "presented for composition" (i.e. in the visible viewport)
+ * for rVFC to fire. Because our video element is off-DOM, rVFC would stop firing
+ * whenever the browser de-prioritises it (tab hidden, modal open, etc.), causing the
+ * canvas to freeze. rAF + currentTime-change detection is slightly less CPU-optimal
+ * but completely reliable across all browsers and visibility states.
  *
- * The video element is kept off-DOM (just a useRef). This lets us apply
- * post-processing (blur, filters) on the canvas in the future without
- * changing the component tree.
+ * The video element is kept off-DOM so we can add canvas post-processing (blur,
+ * filters) in the future without touching the component tree.
  */
 export function useCanvasVideo(
   stream: MediaStream | null,
@@ -24,18 +21,17 @@ export function useCanvasVideo(
   active = true,
 ): void {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const handleRef = useRef<number>(0);
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !stream || !active) return;
 
-    // Create (or reuse) an off-DOM video element
     if (!videoRef.current) {
       videoRef.current = document.createElement('video');
       videoRef.current.autoplay = true;
       videoRef.current.playsInline = true;
-      videoRef.current.muted = true; // audio is handled separately by the consumer
+      videoRef.current.muted = true;
     }
     const video = videoRef.current;
     video.srcObject = stream;
@@ -44,52 +40,29 @@ export function useCanvasVideo(
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const draw = () => {
-      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-        // Match canvas size to video frame
+    let lastTime = -1;
+
+    const onFrame = () => {
+      // Only redraw when a new frame has actually arrived.
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.currentTime !== lastTime) {
+        lastTime = video.currentTime;
         if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
           canvas.width = video.videoWidth || canvas.width;
           canvas.height = video.videoHeight || canvas.height;
         }
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       }
+      rafRef.current = requestAnimationFrame(onFrame);
     };
-
-    const supportsRVFC = typeof (video as VideoWithRVFC).requestVideoFrameCallback === 'function';
-
-    if (supportsRVFC) {
-      // rVFC: called exactly once per decoded frame — no wasted draws
-      const rvfc = video as VideoWithRVFC;
-      const onFrame = () => {
-        draw();
-        handleRef.current = rvfc.requestVideoFrameCallback(onFrame);
-      };
-      handleRef.current = rvfc.requestVideoFrameCallback(onFrame);
-    } else {
-      // rAF fallback: only redraw when currentTime has advanced
-      let lastTime = -1;
-      const onFrame = () => {
-        if (video.currentTime !== lastTime) {
-          lastTime = video.currentTime;
-          draw();
-        }
-        handleRef.current = requestAnimationFrame(onFrame);
-      };
-      handleRef.current = requestAnimationFrame(onFrame);
-    }
+    rafRef.current = requestAnimationFrame(onFrame);
 
     return () => {
-      if (supportsRVFC && handleRef.current) {
-        (video as VideoWithRVFC).cancelVideoFrameCallback(handleRef.current);
-      } else {
-        cancelAnimationFrame(handleRef.current);
-      }
+      cancelAnimationFrame(rafRef.current);
       video.srcObject = null;
-      handleRef.current = 0;
+      rafRef.current = 0;
     };
   }, [stream, canvasRef, active]);
 
-  // Cleanup video element on unmount
   useEffect(() => {
     return () => {
       if (videoRef.current) {
