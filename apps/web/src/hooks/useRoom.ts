@@ -5,7 +5,7 @@ import { MediasoupClient, type ParticipantState } from '@repo/rtc-sdk';
 import { useSignaling } from './useSignaling';
 import { getClientEnv } from '@/lib/env';
 
-export type RoomState = 'idle' | 'joining' | 'joined' | 'error' | 'banned';
+export type RoomState = 'idle' | 'joining' | 'joined' | 'error' | 'banned' | 'room_locked';
 
 export type { ParticipantState };
 
@@ -162,6 +162,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       const msg = joinError.message;
       if (msg.includes('BANNED')) {
         setRoomState('banned');
+      } else if (msg.includes('ROOM_LOCKED')) {
+        setRoomState('room_locked');
       } else {
         setError(joinError);
         setRoomState('error');

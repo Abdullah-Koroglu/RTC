@@ -77,7 +77,7 @@ export function ChatPanel({ open, messages, onClose, onSend, isMobile = false }:
       {/* Messages */}
       <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 8px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         {messages.length === 0 && (
-          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 12, paddingTop: 40 }}>No messages yet</p>
+          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: 12, paddingTop: 40 }}>Henüz mesaj yok</p>
         )}
         {messages.map((msg) => (
           <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.isSelf ? 'flex-end' : 'flex-start' }}>
@@ -97,7 +97,7 @@ export function ChatPanel({ open, messages, onClose, onSend, isMobile = false }:
       {/* Input */}
       <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.07)', flexShrink: 0, display: 'flex', gap: 8, alignItems: 'center' }}>
         <input
-          placeholder="Message…"
+          placeholder="Mesaj yaz…"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') send(); }}

@@ -46,7 +46,7 @@ const IcChev    = ({ s = 14, c = 'currentColor' }: { s?: number; c?: string }) =
 function ProfileAvatar({ name, photo, onClick }: { name: string; photo?: string | null | undefined; onClick: () => void }) {
   const initials = (name || '?').split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2);
   return (
-    <button onClick={onClick} title="My profile"
+    <button onClick={onClick} title="Profilim"
       style={{ width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', cursor: 'pointer', border: '1.5px solid rgba(59,130,246,0.55)', padding: 0, background: 'transparent', flexShrink: 0, transition: 'border-color 0.2s' }}
       onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#3B82F6')}
       onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'rgba(59,130,246,0.55)')}
@@ -70,7 +70,7 @@ const TopBar = memo(function TopBar({ roomId, count, screenSharing, onSettings, 
         <Image src="/logo-only.png" width={28} height={28} alt="Link" style={{ objectFit: 'contain', flexShrink: 0 }} />
         <span style={{ color: 'rgba(255,255,255,0.88)', fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em', maxWidth: isMobile ? 130 : 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{roomId}</span>
         {screenSharing && !isMobile && (
-          <span style={{ background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', color: '#3B82F6', padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}>● Sharing</span>
+          <span style={{ background: 'rgba(59,130,246,0.18)', border: '1px solid rgba(59,130,246,0.4)', color: '#3B82F6', padding: '3px 9px', borderRadius: 20, fontSize: 11, fontWeight: 500, whiteSpace: 'nowrap' }}>● Yayında</span>
         )}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12, flexShrink: 0 }}>
@@ -123,14 +123,14 @@ function ControlBar({ micOn, camOn, screenShare, chatOpen, breakoutOpen, unread,
   return (
     <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: isMobile ? 72 : 82, background: 'rgba(10,12,18,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.06)', zIndex: 100 }}>
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'center', gap: isMobile ? 6 : 10, padding: isMobile ? '0 12px' : '0 20px', overflowX: isMobile ? 'auto' : 'visible', scrollbarWidth: 'none' }}>
-        <CtrlBtn onClick={onMic}      icon={micOn ? <IcMic s={20} /> : <IcMicOff s={20} />}    label={L(micOn ? 'Mute' : 'Unmute')}         danger={!micOn} />
-        <CtrlBtn onClick={onCam}      icon={camOn ? <IcVideo s={20} /> : <IcVideoOff s={20} />} label={L(camOn ? 'Stop Video' : 'Start Video')} danger={!camOn} />
-        <CtrlBtn onClick={onScreen}   icon={<IcMonitor s={20} />}                                label={L('Share')}    lit={screenShare} />
-        <CtrlBtn onClick={onChat}     icon={<IcChat s={20} />}                                   label={L('Chat')}     lit={chatOpen} badge={unread} />
+        <CtrlBtn onClick={onMic}      icon={micOn ? <IcMic s={20} /> : <IcMicOff s={20} />}    label={L(micOn ? 'Sustur' : 'Aç')}            danger={!micOn} />
+        <CtrlBtn onClick={onCam}      icon={camOn ? <IcVideo s={20} /> : <IcVideoOff s={20} />} label={L(camOn ? 'Kamera Kapat' : 'Kamera Aç')} danger={!camOn} />
+        <CtrlBtn onClick={onScreen}   icon={<IcMonitor s={20} />}                                label={L('Paylaş')}   lit={screenShare} />
+        <CtrlBtn onClick={onChat}     icon={<IcChat s={20} />}                                   label={L('Sohbet')}   lit={chatOpen} badge={unread} />
         <CtrlBtn onClick={onHand}     icon={<span style={{ fontSize: 18 }}>✋</span>}            label={L(handRaised ? 'El İndir' : 'El Kaldır')} lit={handRaised} />
-        <CtrlBtn onClick={onBreakout} icon={<IcGrid s={20} />}                                   label={L('Rooms')}    lit={breakoutOpen} />
+        <CtrlBtn onClick={onBreakout} icon={<IcGrid s={20} />}                                   label={L('Odalar')}   lit={breakoutOpen} />
         <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)', margin: '0 4px', flexShrink: 0 }} />
-        <CtrlBtn onClick={onLeave}    icon={<IcPhone s={20} />} label={L('Leave')} forceRed />
+        <CtrlBtn onClick={onLeave}    icon={<IcPhone s={20} />} label={L('Ayrıl')} forceRed />
       </div>
     </div>
   );
@@ -186,7 +186,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
         {/* Main screen — fills available space */}
         <div style={{ flex: 1, background: '#141820', borderRadius: 12, position: 'relative', overflow: 'hidden', border: '1.5px solid rgba(59,130,246,0.4)', minHeight: 0 }}>
           <VideoTile stream={screenStream} label={`${displayName} (Screen)`} muted />
-          <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 20, padding: '3px 8px', fontSize: 10, color: '#3B82F6', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>● Sharing</div>
+          <div style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 20, padding: '3px 8px', fontSize: 10, color: '#3B82F6', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>● Yayında</div>
         </div>
         {/* Horizontal participant strip */}
         {stripTiles.length > 0 && (
@@ -207,7 +207,7 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
       {/* Main screen */}
       <div style={{ flex: 4, background: '#141820', borderRadius: 14, position: 'relative', overflow: 'hidden', border: '1.5px solid rgba(59,130,246,0.4)', minWidth: 0 }}>
         <VideoTile stream={screenStream} label={`${displayName} (Screen)`} muted />
-        <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 20, padding: '4px 10px', fontSize: 11, color: '#3B82F6', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>● Sharing screen</div>
+        <div style={{ position: 'absolute', top: 10, left: 10, background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 20, padding: '4px 10px', fontSize: 11, color: '#3B82F6', fontWeight: 500, fontFamily: 'Inter, sans-serif' }}>● Yayında screen</div>
       </div>
       {/* Participant strip */}
       <div style={{ width: 176, display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', flexShrink: 0 }}>
@@ -316,8 +316,8 @@ function SettingsModal({ onClose, onRepublish }: { onClose: () => void; onRepubl
           onChange={(e) => onChange(e.target.value)}
           style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 28px 8px 10px', color: 'rgba(255,255,255,0.75)', fontSize: 12, outline: 'none', appearance: 'none', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
         >
-          {devices.length === 0 && <option value="">No device found</option>}
-          {devices.map((d) => <option key={d.deviceId} value={d.deviceId} style={{ background: '#1A1F2E' }}>{d.label || `Device ${d.deviceId.slice(0, 8)}`}</option>)}
+          {devices.length === 0 && <option value="">Cihaz bulunamadı</option>}
+          {devices.map((d) => <option key={d.deviceId} value={d.deviceId} style={{ background: '#1A1F2E' }}>{d.label || `Cihaz ${d.deviceId.slice(0, 8)}`}</option>)}
         </select>
         <div style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}><IcChev c="rgba(255,255,255,0.3)" /></div>
       </div>
@@ -366,12 +366,12 @@ function SettingsModal({ onClose, onRepublish }: { onClose: () => void; onRepubl
 
 /* ── Shortcuts modal ── */
 function ShortcutsModal({ onClose }: { onClose: () => void }) {
-  const keys = [['Space', 'Mute / Unmute'], ['V', 'Toggle camera'], ['S', 'Screen share'], ['C', 'Toggle chat'], ['Esc', 'Close panels'], ['?', 'Keyboard shortcuts']];
+  const keys = [['Space', 'Mikrofon aç / kapat'], ['V', 'Kamera aç / kapat'], ['S', 'Ekran paylaşımı'], ['C', 'Sohbeti aç/kapat'], ['Esc', 'Panelleri kapat'], ['?', 'Klavye kısayolları']];
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: 'rgba(18,22,34,0.98)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, width: '100%', maxWidth: 360, boxShadow: '0 32px 80px rgba(0,0,0,0.6)', fontFamily: 'Inter, sans-serif', overflow: 'hidden' }}>
         <div style={{ padding: '18px 20px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><IcHelp s={16} c="#3B82F6" /><span style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>Keyboard shortcuts</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}><IcHelp s={16} c="#3B82F6" /><span style={{ color: 'white', fontSize: 15, fontWeight: 600 }}>Klavye Kısayolları</span></div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: 7, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.5)' }}><IcX /></button>
         </div>
         <div style={{ padding: '8px 0 16px' }}>
@@ -885,6 +885,20 @@ export default function RoomPage() {
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 14, padding: '20px 28px', color: '#F87171', fontFamily: 'Inter, sans-serif', textAlign: 'center' }}>
               Bağlantı hatası. Lütfen tekrar deneyin.
+            </div>
+          </div>
+        )}
+
+        {roomState === 'room_locked' && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif' }}>
+            <div style={{ background: 'rgba(22,27,42,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding: '32px 36px', textAlign: 'center', maxWidth: 340 }}>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
+              <p style={{ color: 'white', fontSize: 17, fontWeight: 700, margin: '0 0 8px' }}>Bu oda kilitlendi</p>
+              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, margin: '0 0 24px' }}>Host yeni katılımcıları geçici olarak devre dışı bıraktı.</p>
+              <button onClick={() => router.push('/')}
+                style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, color: 'rgba(255,255,255,0.7)', fontSize: 14, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+                Ana Sayfaya Dön
+              </button>
             </div>
           </div>
         )}

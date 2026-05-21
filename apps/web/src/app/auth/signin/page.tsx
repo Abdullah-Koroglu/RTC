@@ -88,8 +88,8 @@ function SignInContent() {
       <div style={{ background: 'rgba(22,27,42,0.82)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 22, padding: '36px 32px', width: '100%', maxWidth: 400, zIndex: 1, boxShadow: '0 32px 80px rgba(0,0,0,0.5)', position: 'relative' }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <Image src="/logo-only.png" width={52} height={52} alt="Link" style={{ objectFit: 'contain', marginBottom: 12 }} />
-          <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>Sign in to Link</h2>
-          <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, marginTop: 6 }}>Choose how you&apos;d like to continue</p>
+          <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>Link&apos;e Giriş Yap</h2>
+          <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, marginTop: 6 }}>Devam etmek için bir yöntem seçin</p>
         </div>
 
         {conflictMessage && (
@@ -100,8 +100,8 @@ function SignInContent() {
 
         {/* OAuth */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 20 }}>
-          <SocialBtn icon={<GoogleIcon />} label={loading === 'google' ? 'Redirecting…' : 'Continue with Google'} onClick={() => void handleOAuth('google')} disabled={loading !== null} />
-          <SocialBtn icon={<GitHubIcon />} label={loading === 'github' ? 'Redirecting…' : 'Continue with GitHub'} onClick={() => void handleOAuth('github')} disabled={loading !== null} />
+          <SocialBtn icon={<GoogleIcon />} label={loading === 'google' ? 'Yönlendiriliyor…' : 'Google ile devam et'} onClick={() => void handleOAuth('google')} disabled={loading !== null} />
+          <SocialBtn icon={<GitHubIcon />} label={loading === 'github' ? 'Yönlendiriliyor…' : 'GitHub ile devam et'} onClick={() => void handleOAuth('github')} disabled={loading !== null} />
         </div>
 
         <Divider />

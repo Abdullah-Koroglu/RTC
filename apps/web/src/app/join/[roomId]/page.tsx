@@ -217,7 +217,9 @@ function PasswordScreen({ roomId, onSuccess, onBack, onRequestJoin }: { roomId: 
         <h2 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 6px', textAlign: 'center' }}>Şifreli Toplantı</h2>
         <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, textAlign: 'center', margin: '0 0 24px' }}>Bu toplantıya katılmak için şifre gerekiyor.</p>
         <form onSubmit={(e) => void submit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input type="password" autoFocus placeholder="Toplantı şifresi" value={password} onChange={(e) => setPassword(e.target.value)} required
+          <input 
+            className='masked'
+          autoFocus placeholder="Toplantı şifresi" value={password} onChange={(e) => setPassword(e.target.value)} required
             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 13px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'Inter,sans-serif' }}
             onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
             onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
@@ -255,6 +257,7 @@ export default function JoinLobbyPage() {
   const [showWaiting, setShowWaiting] = useState(false);
   const [waitingPeerId, setWaitingPeerId] = useState('');
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState('');
   const [camOn, setCamOn] = useState(true);
   const [micOn, setMicOn] = useState(true);
   const [selectedCam, setSelectedCam] = useState('');
@@ -363,7 +366,6 @@ export default function JoinLobbyPage() {
     ? name.trim().split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2)
     : '?';
 
-  const canJoin = name.trim().length > 0;
 
   const saveSessionPrefs = () => {
     sessionStorage.setItem(SS_DISPLAY_NAME, name.trim());
@@ -377,7 +379,12 @@ export default function JoinLobbyPage() {
   };
 
   const handleJoin = () => {
-    if (!canJoin) { document.getElementById('join-name-input')?.focus(); return; }
+    if (!name.trim()) {
+      setNameError('Lütfen adınızı girin');
+      document.getElementById('join-name-input')?.focus();
+      return;
+    }
+    setNameError('');
 
     if (previewStreamRef.current) {
       previewStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -493,7 +500,7 @@ export default function JoinLobbyPage() {
                 </div>
               )}
               <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                {camError ? 'Camera unavailable' : 'Camera off'}
+                {camError ? 'Kamera kullanılamıyor' : 'Kamera kapalı'}
               </span>
             </div>
           )}
@@ -506,36 +513,40 @@ export default function JoinLobbyPage() {
 
         {/* Display name */}
         <div style={{ marginBottom: 13 }}>
-          <label style={{ display: 'block', color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 600, marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            Display Name
+          <label style={{ display: 'block', color: nameError ? '#f87171' : 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 600, marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Ad Soyad
           </label>
           <input
             id="join-name-input"
             type="text"
-            placeholder="e.g. Alex Chen"
+            placeholder="Adınızı girin"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && canJoin) handleJoin(); }}
+            onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleJoin(); }}
             autoFocus={!session}
-            style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 13px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'Inter, sans-serif', transition: 'border-color 0.15s' }}
-            onFocus={(e) => (e.target.style.borderColor = 'rgba(59,130,246,0.6)')}
-            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+            style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.05)', border: `1px solid ${nameError ? 'rgba(248,113,113,0.7)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 10, padding: '12px 13px', color: 'white', fontSize: 14, outline: 'none', fontFamily: 'Inter, sans-serif', transition: 'border-color 0.15s' }}
+            onFocus={(e) => (e.target.style.borderColor = nameError ? 'rgba(248,113,113,0.9)' : 'rgba(59,130,246,0.6)')}
+            onBlur={(e) => (e.target.style.borderColor = nameError ? 'rgba(248,113,113,0.7)' : 'rgba(255,255,255,0.1)')}
           />
+          {nameError && (
+            <p style={{ color: '#f87171', fontSize: 12, margin: '5px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span>⚠</span> {nameError}
+            </p>
+          )}
         </div>
 
         {/* Device selects */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 22 }}>
-          <DeviceSelect label="Camera" devices={cameras} value={selectedCam} onChange={setSelectedCam} />
-          <DeviceSelect label="Microphone" devices={microphones} value={selectedMic} onChange={setSelectedMic} />
+          <DeviceSelect label="Kamera" devices={cameras} value={selectedCam} onChange={setSelectedCam} />
+          <DeviceSelect label="Mikrofon" devices={microphones} value={selectedMic} onChange={setSelectedMic} />
         </div>
 
-        {/* Join button */}
+        {/* Join button — always enabled, validation on submit */}
         <button
           onClick={handleJoin}
-          disabled={!canJoin}
-          style={{ width: '100%', padding: '13px', background: canJoin ? '#3B82F6' : 'rgba(59,130,246,0.22)', border: 'none', borderRadius: 11, color: canJoin ? 'white' : 'rgba(255,255,255,0.3)', fontSize: 14, fontWeight: 600, cursor: canJoin ? 'pointer' : 'not-allowed', transition: 'all 0.15s', fontFamily: 'Inter, sans-serif' }}
-          onMouseEnter={(e) => { if (canJoin) { e.currentTarget.style.background = '#2563EB'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(59,130,246,0.35)'; } }}
-          onMouseLeave={(e) => { if (canJoin) { e.currentTarget.style.background = '#3B82F6'; e.currentTarget.style.boxShadow = 'none'; } }}
+          style={{ width: '100%', padding: '13px', background: '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'Inter, sans-serif' }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#2563EB'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(59,130,246,0.35)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = '#3B82F6'; e.currentTarget.style.boxShadow = 'none'; }}
         >
           {accessPhase === 'waiting' ? 'Katılım İste' : 'Odaya Katıl'}
         </button>
@@ -548,7 +559,7 @@ export default function JoinLobbyPage() {
       </div>
 
       <p style={{ marginTop: 18, color: 'rgba(255,255,255,0.18)', fontSize: 11, textAlign: 'center' }}>
-        By joining you agree to Link&apos;s Terms of Service &amp; Privacy Policy
+        Katılarak Link&apos;in Kullanım Koşulları&apos;nı ve Gizlilik Politikası&apos;nı kabul etmiş olursunuz.
       </p>
     </div>
   );

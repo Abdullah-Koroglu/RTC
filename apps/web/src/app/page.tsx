@@ -133,8 +133,8 @@ function LandingContent() {
             </button>
           ) : (
             <>
-              <NavBtn label="Log in" onClick={() => router.push('/auth/signin')} outline />
-              <NavBtn label="Sign up" onClick={() => router.push('/auth/signin')} />
+              <NavBtn label="Giriş Yap" onClick={() => router.push('/auth/signin')} outline />
+              <NavBtn label="Kayıt Ol" onClick={() => router.push('/auth/signin')} />
             </>
           )}
         </div>
