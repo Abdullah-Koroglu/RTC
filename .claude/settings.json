@@ -26,7 +26,8 @@
       "Bash(git push *)",
       "Bash(rm -rf \"c:/Users/abdullahkoroglu/Documents/sources/DIS/RTC/apps/web/src/app/api/rooms/[roomCode]\" && echo \"deleted\")",
       "Bash(git commit -m ' *)",
-      "Bash(pnpm --filter @repo/signaling exec tsc --noEmit)"
+      "Bash(pnpm --filter @repo/signaling exec tsc --noEmit)",
+      "Read(//c/Users/abdullahkoroglu/.claude/projects/c--Users-abdullahkoroglu-Documents-sources-DIS-RTC/memory/**)"
     ],
     "additionalDirectories": [
       "c:\\Users\\abdullahkoroglu\\Documents\\sources\\DIS\\RTC\\apps\\web\\src\\app\\api\\rooms\\[roomCode]"
