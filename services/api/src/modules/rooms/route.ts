@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { env } from '@/config/env';
 import {
   createRoomBodySchema,
   verifyPasswordBodySchema,
@@ -84,6 +85,18 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
     if (room.isExpired) return reply.code(410).send({ code: 'EXPIRED', message: 'Room has expired' });
     if (room.isLocked) return reply.code(403).send({ code: 'LOCKED', message: 'Room is locked' });
     const id = await createJoinRequest(app, code, peerId, displayName ?? peerId, userId ?? null);
+
+    // Notify signaling so it can forward the request to the host via WebSocket
+    if (env.SIGNALING_INTERNAL_URL) {
+      void fetch(`${env.SIGNALING_INTERNAL_URL}/internal/join-request-notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId: code, peerId, displayName: displayName ?? peerId }),
+      }).catch((err: unknown) => {
+        app.log.warn({ err }, 'signaling_join_request_notify_failed');
+      });
+    }
+
     return reply.code(201).send({ id });
   });
 

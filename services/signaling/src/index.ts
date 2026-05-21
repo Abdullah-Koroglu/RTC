@@ -44,6 +44,16 @@ async function bootstrap(): Promise<void> {
     return reply.send({ ok: true });
   });
 
+  app.post('/internal/join-request-notify', async (request, reply) => {
+    const body = z.object({
+      roomId: z.string().min(1),
+      peerId: z.string().min(1),
+      displayName: z.string(),
+    }).parse(request.body);
+    await gateway.handleJoinRequestNotification(body.roomId, body.peerId, body.displayName);
+    return reply.send({ ok: true });
+  });
+
   // REST endpoint to query current room participants
   app.get<{ Params: { roomId: string } }>('/rooms/:roomId/participants', async (request) => ({
     participants: await roomManager.getParticipants(request.params.roomId),

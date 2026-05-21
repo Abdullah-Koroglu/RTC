@@ -42,6 +42,7 @@ export interface UseRoomReturn {
   isRoomLocked: boolean;
   wasKicked: boolean;
   joinRequests: Array<{ peerId: string; displayName: string }>;
+  newJoinRequestAlert: { peerId: string; displayName: string } | null;
   raisedHands: Array<{ peerId: string; displayName: string }>;
   unmuteRequest: { kind: 'audio' | 'video' | 'both' } | null;
   joinRoom: () => Promise<void>;
@@ -63,6 +64,7 @@ export interface UseRoomReturn {
   raiseHand: () => void;
   lowerHand: (targetPeerId?: string) => void;
   dismissUnmuteRequest: () => void;
+  dismissJoinRequestAlert: () => void;
 }
 
 /**
@@ -92,6 +94,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [joinRequests, setJoinRequests] = useState<Array<{ peerId: string; displayName: string }>>([]);
   const [raisedHands, setRaisedHands] = useState<Array<{ peerId: string; displayName: string }>>([]);
   const [unmuteRequest, setUnmuteRequest] = useState<{ kind: 'audio' | 'video' | 'both' } | null>(null);
+  const [newJoinRequestAlert, setNewJoinRequestAlert] = useState<{ peerId: string; displayName: string } | null>(null);
 
   const mediaClientRef = useRef<MediasoupClient | null>(null);
   // producerId → peerId
@@ -552,6 +555,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           if (prev.some((r) => r.peerId === requesterPeerId)) return prev;
           return [...prev, { peerId: requesterPeerId, displayName: requesterName }];
         });
+        setNewJoinRequestAlert({ peerId: requesterPeerId, displayName: requesterName });
       }),
     );
 
@@ -720,6 +724,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     setUnmuteRequest(null);
   }, []);
 
+  const dismissJoinRequestAlert = useCallback(() => {
+    setNewJoinRequestAlert(null);
+  }, []);
+
   return {
     roomState,
     error,
@@ -734,6 +742,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     isRoomLocked,
     wasKicked,
     joinRequests,
+    newJoinRequestAlert,
     raisedHands,
     unmuteRequest,
     joinRoom,
@@ -755,5 +764,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     raiseHand,
     lowerHand,
     dismissUnmuteRequest,
+    dismissJoinRequestAlert,
   };
 }

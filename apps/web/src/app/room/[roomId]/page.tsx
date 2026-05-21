@@ -618,6 +618,7 @@ export default function RoomPage() {
     isRoomLocked,
     wasKicked,
     joinRequests,
+    newJoinRequestAlert,
     raisedHands,
     unmuteRequest,
     leaveRoom,
@@ -638,6 +639,7 @@ export default function RoomPage() {
     raiseHand,
     lowerHand,
     dismissUnmuteRequest,
+    dismissJoinRequestAlert,
   } = useRoom({
     roomId,
     peerId,
@@ -658,6 +660,25 @@ export default function RoomPage() {
   useEffect(() => {
     if (wasKicked) router.replace('/?kicked=1');
   }, [wasKicked, router]);
+
+  // Play notification sound when a new join request arrives (host only)
+  useEffect(() => {
+    if (!newJoinRequestAlert || !isHost) return;
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+    } catch { /* AudioContext may be blocked */ }
+  }, [newJoinRequestAlert, isHost]);
 
   // Redirect to join lobby if no displayName
   useEffect(() => {
@@ -911,6 +932,39 @@ export default function RoomPage() {
 
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} onRepublish={(c, m) => void onRepublish(c, m)} />}
       {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
+
+      {/* Join request modal (host only) */}
+      {isHost && newJoinRequestAlert && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 600, fontFamily: 'Inter,sans-serif' }}>
+          <div style={{ background: 'rgba(14,18,30,0.98)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: '28px 32px', width: '100%', maxWidth: 360, boxShadow: '0 24px 80px rgba(0,0,0,0.7)', textAlign: 'center' }}>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(59,130,246,0.2)', border: '2px solid rgba(59,130,246,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 22, fontWeight: 700, color: 'white' }}>
+              {(newJoinRequestAlert.displayName[0] ?? '?').toUpperCase()}
+            </div>
+            <p style={{ color: 'white', fontSize: 16, fontWeight: 700, margin: '0 0 6px' }}>{newJoinRequestAlert.displayName}</p>
+            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, margin: '0 0 24px' }}>katılmak için izin istiyor</p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => { approveJoin(newJoinRequestAlert.peerId); dismissJoinRequestAlert(); }}
+                style={{ flex: 1, padding: '13px', background: '#22C55E', border: 'none', borderRadius: 11, color: 'white', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+              >
+                Kabul Et
+              </button>
+              <button
+                onClick={() => { denyJoin(newJoinRequestAlert.peerId); dismissJoinRequestAlert(); }}
+                style={{ flex: 1, padding: '13px', background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', borderRadius: 11, color: '#f87171', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}
+              >
+                Reddet
+              </button>
+            </div>
+            {joinRequests.length > 1 && (
+              <button onClick={dismissJoinRequestAlert}
+                style={{ marginTop: 12, background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', fontSize: 12, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+                Sonra bak ({joinRequests.length - 1} bekliyor daha)
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Unmute request from host */}
       {unmuteRequest && (

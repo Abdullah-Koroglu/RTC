@@ -71,6 +71,27 @@ export class WebSocketGateway {
     });
   }
 
+  async handleJoinRequestNotification(roomId: string, peerId: string, displayName: string): Promise<void> {
+    // Add to in-memory waiting list
+    const waiters = this.waitingRoom.get(roomId) ?? new Map();
+    waiters.set(peerId, { connectionId: '', displayName });
+    this.waitingRoom.set(roomId, waiters);
+
+    // Forward to host via WebSocket
+    const hostPeerId = this.rooms.getHost(roomId);
+    if (hostPeerId) {
+      const hostConn = this.connections.getByParticipantId(hostPeerId);
+      if (hostConn) {
+        this.send(hostConn.socket, {
+          type: 'room.join-requested',
+          roomId,
+          peerId,
+          displayName,
+        });
+      }
+    }
+  }
+
   async handleProducerNew(roomId: string, peerId: string, producerId: string, kind: 'audio' | 'video'): Promise<void> {
     await this.dispatcher.publishRoomEvent(roomId, {
       type: 'producer.new',

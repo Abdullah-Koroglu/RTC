@@ -171,6 +171,7 @@ services:
       DATABASE_ENABLED: 'true'
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET}
+      SIGNALING_INTERNAL_URL: http://rtc-signaling-prod:4010
     ports:
       - '127.0.0.1:4000:4000'
     depends_on:
