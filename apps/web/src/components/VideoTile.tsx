@@ -107,6 +107,7 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
 
 export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, color, photo }: VideoTileProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [cssFullscreen, setCssFullscreen] = useState(false);
@@ -123,7 +124,49 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   }, []);
 
   // Cross-browser canvas renderer: rVFC when available, rAF fallback
-  useCanvasVideo(hasVideoTracks ? stream : null, canvasRef as React.RefObject<HTMLCanvasElement>, hasVideoTracks, muted);
+  useCanvasVideo(hasVideoTracks ? stream : null, canvasRef as React.RefObject<HTMLCanvasElement>, hasVideoTracks);
+
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (!audioEl) return;
+
+    const hasAudioTracks = stream.getAudioTracks().length > 0;
+    audioEl.srcObject = hasAudioTracks ? stream : null;
+    audioEl.muted = muted;
+
+    if (!hasAudioTracks || muted) {
+      return () => {
+        audioEl.srcObject = null;
+      };
+    }
+
+    let disposed = false;
+    let detachRetry: (() => void) | null = null;
+
+    const tryPlay = () => {
+      void audioEl.play().catch(() => {
+        if (disposed || detachRetry) return;
+        const retry = () => {
+          void audioEl.play().catch(() => undefined);
+        };
+        const opts: AddEventListenerOptions = { capture: true, once: true };
+        window.addEventListener('pointerdown', retry, opts);
+        window.addEventListener('keydown', retry, opts);
+        detachRetry = () => {
+          window.removeEventListener('pointerdown', retry, true);
+          window.removeEventListener('keydown', retry, true);
+        };
+      });
+    };
+
+    tryPlay();
+
+    return () => {
+      disposed = true;
+      if (detachRetry) detachRetry();
+      audioEl.srcObject = null;
+    };
+  }, [stream, muted]);
 
   useEffect(() => {
     const onChange = () => {
@@ -231,6 +274,8 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
           display: hasVideoTracks ? 'block' : 'none',
         }}
       />
+
+      <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />
 
       {/* Name label */}
       <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', alignItems: 'center', gap: 5, zIndex: 1 }}>
