@@ -320,14 +320,18 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     if (additions.size > 0) {
       setRemoteStreams((prev) => {
         const updated = new Map(prev);
-        for (const [key, stream] of additions) {
+        for (const [key, newTracks] of additions) {
           const existing = updated.get(key);
           if (existing) {
-            for (const track of stream.getTracks()) {
-              if (!existing.getTracks().some((t) => t.id === track.id)) existing.addTrack(track);
+            // Create a NEW MediaStream so the reference changes and React memo
+            // re-renders the VideoTile (addTrack mutation silently breaks memo).
+            const merged = new MediaStream(existing.getTracks());
+            for (const track of newTracks.getTracks()) {
+              if (!merged.getTracks().some((t) => t.id === track.id)) merged.addTrack(track);
             }
+            updated.set(key, merged);
           } else {
-            updated.set(key, stream);
+            updated.set(key, newTracks);
           }
         }
         return updated;

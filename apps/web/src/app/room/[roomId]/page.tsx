@@ -243,9 +243,6 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
   const count = tiles.length;
   if (count === 0) return null;
 
-  console.log({tiles});
-  
-
   const cols = isMobile ? 1 : count <= 1 ? 1 : count <= 2 ? 2 : count <= 4 ? 2 : 3;
   const rows = Math.ceil(count / cols);
 

@@ -6,10 +6,12 @@ let instance: SignalingClient | null = null;
 async function fetchSignalingToken(participantId: string): Promise<string> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
-  // If the user is authenticated, include their display name for richer JWT claims
+  // Always use the client-generated participantId as the JWT subject so that the
+  // server's participantId and the client's peerId are the same value everywhere.
+  // Authenticated users get an additional `role` claim for access control.
   const session = await getSession();
   const body = session?.user
-    ? { subject: session.user.id ?? participantId, role: 'user' }
+    ? { subject: participantId, role: 'user' }
     : { subject: participantId };
 
   const response = await fetch(`${apiUrl}/v1/auth/login`, {
