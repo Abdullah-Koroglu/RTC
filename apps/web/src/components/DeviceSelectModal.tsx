@@ -12,8 +12,9 @@ export function DeviceSelectModal({ onConfirm }: DeviceSelectModalProps) {
   const { cameras, microphones, loading, error } = useDevices();
   const [selectedCamera, setSelectedCamera] = useState('');
   const [selectedMic, setSelectedMic] = useState('');
-  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewStreamRef = useRef<MediaStream | null>(null);
+  const supportsImageCapture = typeof window !== 'undefined' && typeof (window as { ImageCapture?: unknown }).ImageCapture === 'function';
 
   // Sync default selections when device list loads
   useEffect(() => {
@@ -46,10 +47,6 @@ export function DeviceSelectModal({ onConfirm }: DeviceSelectModalProps) {
         }
 
         previewStreamRef.current = stream;
-        if (previewRef.current) {
-          previewRef.current.srcObject = stream;
-          void previewRef.current.play().catch(() => undefined);
-        }
       } catch {
         // Preview unavailable (e.g., permissions denied) — ignore silently
       }
@@ -61,6 +58,78 @@ export function DeviceSelectModal({ onConfirm }: DeviceSelectModalProps) {
       active = false;
       previewStreamRef.current?.getTracks().forEach((t) => t.stop());
       previewStreamRef.current = null;
+    };
+  }, [selectedCamera]);
+
+  // Paint preview frames onto canvas without using HTML video element.
+  useEffect(() => {
+    const canvas = previewCanvasRef.current;
+    const stream = previewStreamRef.current;
+    const track = stream?.getVideoTracks()[0];
+    const ImageCaptureCtor = (window as unknown as { ImageCapture?: new (track: MediaStreamTrack) => { grabFrame: () => Promise<ImageBitmap> } }).ImageCapture;
+
+    if (!canvas || !track || !ImageCaptureCtor) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const capture = new ImageCaptureCtor(track);
+    let disposed = false;
+    let rafId: number | null = null;
+
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const width = Math.max(1, Math.round(rect.width * dpr));
+      const height = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+    };
+
+    const drawCover = (bitmap: ImageBitmap) => {
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const iw = bitmap.width;
+      const ih = bitmap.height;
+      if (!cw || !ch || !iw || !ih) return;
+
+      const scale = Math.max(cw / iw, ch / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      const dx = (cw - dw) / 2;
+      const dy = (ch - dh) / 2;
+
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(bitmap, dx, dy, dw, dh);
+    };
+
+    const render = async () => {
+      if (disposed) return;
+      resizeCanvas();
+      try {
+        const bitmap = await capture.grabFrame();
+        drawCover(bitmap);
+        bitmap.close();
+      } catch {
+        // Ignore transient frame errors.
+      }
+      if (!disposed) {
+        rafId = window.requestAnimationFrame(() => {
+          void render();
+        });
+      }
+    };
+
+    window.addEventListener('resize', resizeCanvas);
+    void render();
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('resize', resizeCanvas);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
   }, [selectedCamera]);
 
@@ -78,14 +147,13 @@ export function DeviceSelectModal({ onConfirm }: DeviceSelectModalProps) {
 
         {/* Camera preview */}
         <div className="mb-5 overflow-hidden rounded-xl bg-slate-950">
-          <video
-            ref={previewRef}
-            autoPlay
-            playsInline
-            muted
-            className="aspect-video w-full object-cover"
-          />
+          <canvas ref={previewCanvasRef} className="aspect-video w-full" />
         </div>
+        {!supportsImageCapture && (
+          <p className="mb-4 text-center text-xs text-amber-300">
+            Bu tarayicida canli onizleme desteklenmiyor.
+          </p>
+        )}
 
         {loading && (
           <p className="mb-4 text-center text-xs text-slate-500">Cihazlar yükleniyor…</p>

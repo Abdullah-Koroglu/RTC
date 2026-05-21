@@ -105,7 +105,7 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
 }
 
 export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, color, photo }: VideoTileProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [cssFullscreen, setCssFullscreen] = useState(false);
@@ -115,6 +115,8 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   const initials = getInitials(label);
   const isSpeaking = useSpeaking(stream, isMicMuted === true);
   const hasVideoTracks = stream.getVideoTracks().length > 0 && cameraEnabled !== false;
+  const supportsImageCapture = typeof window !== 'undefined' && typeof (window as { ImageCapture?: unknown }).ImageCapture === 'function';
+  const canRenderVideo = hasVideoTracks && supportsImageCapture;
   const inFullscreen = isNativeFullscreen || cssFullscreen;
 
   useEffect(() => {
@@ -122,21 +124,89 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   }, []);
 
   useEffect(() => {
-    if (!videoRef.current || !stream) {return;}
-    const video = videoRef.current;
-    video.srcObject = stream;
-    video.muted = muted;
+    if (!canRenderVideo) return;
+    const canvas = canvasRef.current;
+    const track = stream.getVideoTracks()[0];
+    const ImageCaptureCtor = (window as unknown as { ImageCapture?: new (track: MediaStreamTrack) => { grabFrame: () => Promise<ImageBitmap> } }).ImageCapture;
+    if (!canvas || !track || !ImageCaptureCtor) return;
 
-    const play = () => void video.play().catch(() => undefined);
-    const onTrackAdded = () => { video.srcObject = null; video.srcObject = stream; play(); };
-    stream.addEventListener('addtrack', onTrackAdded);
-    play();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const imageCapture = new ImageCaptureCtor(track);
+    let disposed = false;
+    let rafId: number | null = null;
+
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const width = Math.max(1, Math.round(rect.width * dpr));
+      const height = Math.max(1, Math.round(rect.height * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+    };
+
+    const drawCover = (bitmap: ImageBitmap) => {
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const iw = bitmap.width;
+      const ih = bitmap.height;
+      if (!cw || !ch || !iw || !ih) return;
+
+      const scale = Math.max(cw / iw, ch / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      const dx = (cw - dw) / 2;
+      const dy = (ch - dh) / 2;
+
+      ctx.save();
+      ctx.clearRect(0, 0, cw, ch);
+      if (mirrored) {
+        ctx.translate(cw, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(bitmap, dx, dy, dw, dh);
+      ctx.restore();
+    };
+
+    const render = async () => {
+      if (disposed) return;
+      resizeCanvas();
+      try {
+        const bitmap = await imageCapture.grabFrame();
+        drawCover(bitmap);
+        bitmap.close();
+      } catch {
+        // Ignore transient frame grab failures while tracks renegotiate.
+      }
+      if (!disposed) {
+        rafId = window.requestAnimationFrame(() => {
+          void render();
+        });
+      }
+    };
+
+    const onTrackEnded = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+
+    window.addEventListener('resize', resizeCanvas);
+    track.addEventListener('ended', onTrackEnded);
+    void render();
 
     return () => {
-      stream.removeEventListener('addtrack', onTrackAdded);
-      video.srcObject = null;
+      disposed = true;
+      window.removeEventListener('resize', resizeCanvas);
+      track.removeEventListener('ended', onTrackEnded);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
     };
-  }, [stream, muted]);
+  }, [stream, mirrored, canRenderVideo]);
 
   useEffect(() => {
     const onChange = () => {
@@ -154,7 +224,6 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
 
   const enterFullscreen = () => {
     const el = articleRef.current;
-    const video = videoRef.current;
 
     // Exit any active fullscreen
     if (isNativeFullscreen) {
@@ -170,12 +239,7 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
     // Try native fullscreen on the container element
     if (el?.requestFullscreen) {
       void el.requestFullscreen().catch(() => {
-        // Native failed — try webkit video fullscreen (iOS Safari)
-        if (video && (video as any).webkitEnterFullscreen) {
-          (video as any).webkitEnterFullscreen();
-        } else {
-          setCssFullscreen(true);
-        }
+        setCssFullscreen(true);
       });
       return;
     }
@@ -183,12 +247,6 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
     // Try webkit fullscreen on container (some older browsers)
     if (el && (el as any).webkitRequestFullscreen) {
       (el as any).webkitRequestFullscreen();
-      return;
-    }
-
-    // Try webkit fullscreen on video element (iOS Safari)
-    if (video && (video as any).webkitEnterFullscreen) {
-      (video as any).webkitEnterFullscreen();
       return;
     }
 
@@ -246,16 +304,11 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
         )}
       </div>
 
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted={muted}
+      <canvas
+        ref={canvasRef}
         style={{
           position: 'absolute', inset: 0, width: '100%', height: '100%',
-          objectFit: 'cover',
-          transform: mirrored ? 'scaleX(-1)' : undefined,
-          display: hasVideoTracks ? 'block' : 'none',
+          display: canRenderVideo ? 'block' : 'none',
         }}
       />
 
