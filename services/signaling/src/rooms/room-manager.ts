@@ -294,6 +294,23 @@ export class RoomManager {
     return this.connectionRooms.get(connectionId)?.get(roomId);
   }
 
+  // ── Host-approved peers (bypass lock/ban for specifically approved users) ─
+
+  private readonly approvedPeers = new Map<string, Set<string>>();
+
+  approvePeer(roomId: string, peerId: string): void {
+    if (!this.approvedPeers.has(roomId)) this.approvedPeers.set(roomId, new Set());
+    this.approvedPeers.get(roomId)!.add(peerId);
+  }
+
+  isApproved(roomId: string, peerId: string): boolean {
+    return this.approvedPeers.get(roomId)?.has(peerId) ?? false;
+  }
+
+  consumeApproval(roomId: string, peerId: string): void {
+    this.approvedPeers.get(roomId)?.delete(peerId);
+  }
+
   // ── Ban management ───────────────────────────────────────────────────────
 
   banPeer(roomId: string, peerId: string): void {

@@ -91,6 +91,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [participants, setParticipants] = useState<Map<string, ParticipantState>>(new Map());
+  const pendingPhotosRef = useRef<Map<string, string | null>>(new Map());
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
   const [isRoomLocked, setIsRoomLocked] = useState(false);
   const [wasKicked, setWasKicked] = useState(false);
@@ -156,7 +157,13 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
         },
       );
-      setParticipants(new Map(initialParticipants.map((p) => [p.participantId, p])));
+      const initialMap = new Map(initialParticipants.map((p) => [p.participantId, p]));
+      // Apply any pending photos that arrived before participants map was populated
+      for (const [pid, photo] of pendingPhotosRef.current) {
+        const p = initialMap.get(pid);
+        if (p) { initialMap.set(pid, { ...p, photo }); pendingPhotosRef.current.delete(pid); }
+      }
+      setParticipants(initialMap);
       if (initialHostPeerId) setHostPeerId(initialHostPeerId);
       setRoomState('joined');
     } catch (err) {
@@ -427,9 +434,14 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         for (const [id, p] of freshMap) {
           if (id === peerId) continue;
           const existing = prev.get(id);
-          // Preserve client-side photo field not stored in Redis
           const entry: ParticipantState = { ...p };
-          if (existing?.photo !== undefined) entry.photo = existing.photo;
+          // Preserve client-side photo: from existing state, or from pending if freshly joined
+          if (existing?.photo !== undefined) {
+            entry.photo = existing.photo;
+          } else if (pendingPhotosRef.current.has(id)) {
+            entry.photo = pendingPhotosRef.current.get(id) ?? null;
+            pendingPhotosRef.current.delete(id);
+          }
           next.set(id, entry);
         }
         return next;
@@ -461,9 +473,9 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     }
   }, [roomId, peerId]);
 
-  // Auto-retry join when host approves a banned user's request
+  // Auto-retry join when host approves a banned/locked user's request
   useEffect(() => {
-    if (!signalingClient || roomState !== 'banned') return;
+    if (!signalingClient || (roomState !== 'banned' && roomState !== 'room_locked')) return;
     const unsub = signalingClient.on('room.join-approved', () => {
       void joinRoom().catch(() => undefined);
     });
@@ -520,7 +532,11 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         if (remotePeerId !== peerId) {
           setParticipants((prev) => {
             const existing = prev.get(remotePeerId);
-            if (!existing) return prev;
+            if (!existing) {
+              // Participant not in map yet — store for later application
+              pendingPhotosRef.current.set(remotePeerId, photo);
+              return prev;
+            }
             const next = new Map(prev);
             next.set(remotePeerId, { ...existing, photo });
             return next;

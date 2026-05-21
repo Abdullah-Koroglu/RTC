@@ -247,15 +247,23 @@ export class WebSocketGateway {
     }
 
     if (event.type === 'room.join') {
-      // Locked room: reject new joiners (already-joined members are unaffected)
-      if (!this.rooms.has(event.roomId, conn.connectionId) && this.rooms.isLocked(event.roomId)) {
-        this.send(conn.socket, { type: 'error', code: 'ROOM_LOCKED', message: 'This room is locked' } as Parameters<typeof this.send>[1]);
-        return;
-      }
-      // Banned peer: must go through waiting room
-      if (!this.rooms.has(event.roomId, conn.connectionId) && this.rooms.isBanned(event.roomId, conn.participantId)) {
-        this.send(conn.socket, { type: 'error', code: 'BANNED', message: 'You were removed from this room. Request to join again.' } as Parameters<typeof this.send>[1]);
-        return;
+      const isNewJoiner = !this.rooms.has(event.roomId, conn.connectionId);
+      const isApproved = this.rooms.isApproved(event.roomId, conn.participantId);
+
+      if (isNewJoiner && isApproved) {
+        // Approved by host — consume the approval and allow through
+        this.rooms.consumeApproval(event.roomId, conn.participantId);
+      } else {
+        // Locked room: reject new joiners (already-joined members are unaffected)
+        if (isNewJoiner && this.rooms.isLocked(event.roomId)) {
+          this.send(conn.socket, { type: 'error', code: 'ROOM_LOCKED', message: 'This room is locked' } as Parameters<typeof this.send>[1]);
+          return;
+        }
+        // Banned peer: must go through waiting room
+        if (isNewJoiner && this.rooms.isBanned(event.roomId, conn.participantId)) {
+          this.send(conn.socket, { type: 'error', code: 'BANNED', message: 'You were removed from this room. Request to join again.' } as Parameters<typeof this.send>[1]);
+          return;
+        }
       }
       if (!this.rooms.has(event.roomId, conn.connectionId)) {
         await this.rooms.join(event.roomId, {
@@ -319,11 +327,18 @@ export class WebSocketGateway {
     if (event.type === 'room.approve-join') {
       const waiter = this.waitingRoom.get(event.roomId)?.get(event.peerId);
       this.waitingRoom.get(event.roomId)?.delete(event.peerId);
+      // Whitelist the peer so they bypass lock/ban on next room.join
+      this.rooms.approvePeer(event.roomId, event.peerId);
       if (waiter) {
         const waiterConn = this.connections.getById(waiter.connectionId);
         if (waiterConn) {
           this.send(waiterConn.socket, { type: 'room.join-approved', roomId: event.roomId });
         }
+      }
+      // Also notify any connection with this participantId (for locked/banned cases)
+      const peerConn = this.connections.getByParticipantId(event.peerId);
+      if (peerConn && (!waiter || !this.connections.getById(waiter.connectionId))) {
+        this.send(peerConn.socket, { type: 'room.join-approved', roomId: event.roomId });
       }
       // Persist decision to DB so polling waiting users can see it
       void this.notifyApiJoinDecision(event.roomId, event.peerId, 'approve');
@@ -352,6 +367,7 @@ export class WebSocketGateway {
         return;
       }
       this.rooms.banPeer(event.roomId, event.peerId);
+      this.rooms.consumeApproval(event.roomId, event.peerId); // revoke any prior approval
       const kicked = this.connections.getByParticipantId(event.peerId);
       if (kicked) {
         this.send(kicked.socket, { type: 'room.participant-kicked', roomId: event.roomId, participantId: event.peerId });

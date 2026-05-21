@@ -586,7 +586,6 @@ export default function RoomPage() {
   const [screenShareToast, setScreenShareToast] = useState('');
   const [isMobile, setIsMobile] = useState(false);
 
-  const prevRemoteKeys = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
@@ -745,24 +744,25 @@ export default function RoomPage() {
     return TILE_COLORS[h % TILE_COLORS.length]!;
   }
 
+  const prevParticipantKeys = useRef<Set<string>>(new Set());
   useEffect(() => {
-    const currentKeys = new Set(remoteStreams.keys());
+    const currentKeys = new Set(participants.keys());
     for (const key of currentKeys) {
-      if (!prevRemoteKeys.current.has(key) && !key.endsWith(':screen')) {
-        const name = participants.get(key)?.displayName ?? key;
-        const ini = name.split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
-        addToast(`${name} joined`, ini, colorFor(key));
+      if (!prevParticipantKeys.current.has(key)) {
+        const name = participants.get(key)?.displayName || 'Katılımcı';
+        const ini = name.split(' ').filter(Boolean).map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+        addToast(`${name} katıldı`, ini, colorFor(key));
       }
     }
-    for (const key of prevRemoteKeys.current) {
-      if (!currentKeys.has(key) && !key.endsWith(':screen')) {
-        const name = participants.get(key)?.displayName ?? key;
-        const ini = name.split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
-        addToast(`${name} left`, ini, '#6B7280');
+    for (const key of prevParticipantKeys.current) {
+      if (!currentKeys.has(key)) {
+        const name = participants.get(key)?.displayName || 'Katılımcı';
+        const ini = name.split(' ').filter(Boolean).map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '??';
+        addToast(`${name} ayrıldı`, ini, '#6B7280');
       }
     }
-    prevRemoteKeys.current = currentKeys;
-  }, [remoteStreams]);
+    prevParticipantKeys.current = currentKeys;
+  }, [participants]);
 
   // Unread badge
   useEffect(() => {
@@ -897,14 +897,31 @@ export default function RoomPage() {
 
         {roomState === 'room_locked' && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif' }}>
-            <div style={{ background: 'rgba(22,27,42,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding: '32px 36px', textAlign: 'center', maxWidth: 340 }}>
+            <div style={{ background: 'rgba(22,27,42,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding: '32px 36px', textAlign: 'center', maxWidth: 360 }}>
               <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
               <p style={{ color: 'white', fontSize: 17, fontWeight: 700, margin: '0 0 8px' }}>Bu oda kilitlendi</p>
-              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, margin: '0 0 24px' }}>Host yeni katılımcıları geçici olarak devre dışı bıraktı.</p>
+              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, margin: '0 0 24px', lineHeight: 1.6 }}>
+                Host yeni katılımcıları geçici olarak kapattı.<br />Host'tan izin isteyebilirsiniz.
+              </p>
+              <button
+                onClick={() => {
+                  requestBannedJoin();
+                  void fetch(`/api/rooms/${roomId}/join-requests`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ peerId, displayName }),
+                  });
+                }}
+                style={{ width: '100%', padding: '13px', background: '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter,sans-serif', marginBottom: 10 }}
+              >
+                Host&apos;tan İzin İste
+              </button>
               <button onClick={() => router.push('/')}
-                style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, color: 'rgba(255,255,255,0.7)', fontSize: 14, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+                style={{ width: '100%', padding: '11px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, color: 'rgba(255,255,255,0.5)', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
                 Ana Sayfaya Dön
               </button>
+              <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, margin: '16px 0 0' }}>
+                Host onayladığında otomatik olarak odaya bağlanacaksınız.
+              </p>
             </div>
           </div>
         )}
@@ -942,41 +959,42 @@ export default function RoomPage() {
         )}
       </div>
 
-      <ControlBar
-        micOn={isAudioEnabled}
-        camOn={isVideoEnabled}
-        screenShare={isScreenSharing}
-        chatOpen={isChatOpen}
-        breakoutOpen={breakoutOpen}
-        unread={unreadCount}
-        handRaised={myHandRaised}
-        onMic={onToggleAudio}
-        onCam={onToggleVideo}
-        onScreen={() => void onToggleScreen()}
-        onChat={() => { setIsChatOpen((v) => { if (!v) { setUnreadCount(0); setBreakoutOpen(false); } return !v; }); }}
-        onBreakout={() => { setBreakoutOpen((v) => { if (!v) setIsChatOpen(false); return !v; }); }}
-        onHand={() => { if (myHandRaised) { lowerHand(); setMyHandRaised(false); } else { raiseHand(); setMyHandRaised(true); } }}
-        onLeave={() => void onLeave()}
-        isMobile={isMobile}
-      />
-
-      <ChatPanel
-        open={isChatOpen}
-        messages={chatMessages}
-        onClose={() => setIsChatOpen(false)}
-        onSend={sendChatMessage}
-        isMobile={isMobile}
-      />
-
-      <BreakoutPanel
-        open={breakoutOpen}
-        onClose={() => setBreakoutOpen(false)}
-        currentRoomId={roomId}
-        onJoin={(targetId) => void onJoinBreakout(targetId)}
-        isMobile={isMobile}
-      />
-
-      <ToastStack toasts={toasts} isMobile={isMobile} />
+      {roomState === 'joined' && (
+        <>
+          <ControlBar
+            micOn={isAudioEnabled}
+            camOn={isVideoEnabled}
+            screenShare={isScreenSharing}
+            chatOpen={isChatOpen}
+            breakoutOpen={breakoutOpen}
+            unread={unreadCount}
+            handRaised={myHandRaised}
+            onMic={onToggleAudio}
+            onCam={onToggleVideo}
+            onScreen={() => void onToggleScreen()}
+            onChat={() => { setIsChatOpen((v) => { if (!v) { setUnreadCount(0); setBreakoutOpen(false); } return !v; }); }}
+            onBreakout={() => { setBreakoutOpen((v) => { if (!v) setIsChatOpen(false); return !v; }); }}
+            onHand={() => { if (myHandRaised) { lowerHand(); setMyHandRaised(false); } else { raiseHand(); setMyHandRaised(true); } }}
+            onLeave={() => void onLeave()}
+            isMobile={isMobile}
+          />
+          <ChatPanel
+            open={isChatOpen}
+            messages={chatMessages}
+            onClose={() => setIsChatOpen(false)}
+            onSend={sendChatMessage}
+            isMobile={isMobile}
+          />
+          <BreakoutPanel
+            open={breakoutOpen}
+            onClose={() => setBreakoutOpen(false)}
+            currentRoomId={roomId}
+            onJoin={(targetId) => void onJoinBreakout(targetId)}
+            isMobile={isMobile}
+          />
+          <ToastStack toasts={toasts} isMobile={isMobile} />
+        </>
+      )}
 
       {/* Screen share toast */}
       {screenShareToast && (
