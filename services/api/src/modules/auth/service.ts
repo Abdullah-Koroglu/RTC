@@ -65,6 +65,46 @@ export async function upsertOAuthUser(
   app: FastifyInstance,
   input: UpsertOAuthUserBody,
 ): Promise<{ id: string; email: string; displayName: string; avatarUrl: string | null }> {
+  // Check if this email exists and is already linked to a different provider
+  const existing = await app.db.query<{ id: string; password_hash: string | null }>(
+    'SELECT id, password_hash FROM users WHERE email = $1',
+    [input.email],
+  );
+
+  if ((existing.rowCount ?? 0) > 0) {
+    const userId = existing.rows[0]!.id;
+    const hasPassword = existing.rows[0]!.password_hash !== null;
+
+    // Check if this provider is already linked
+    const providerLinked = await app.db.query<{ id: string }>(
+      'SELECT id FROM user_providers WHERE user_id = $1 AND provider = $2',
+      [userId, input.provider],
+    );
+
+    if ((providerLinked.rowCount ?? 0) === 0) {
+      // Provider not linked — check if there are other providers or a password
+      const otherProviders = await app.db.query<{ provider: string }>(
+        'SELECT provider FROM user_providers WHERE user_id = $1 LIMIT 1',
+        [userId],
+      );
+
+      if ((otherProviders.rowCount ?? 0) > 0) {
+        const existingProvider = otherProviders.rows[0]!.provider;
+        throw Object.assign(new Error(`Email already registered with ${existingProvider}`), {
+          statusCode: 409,
+          existingProvider,
+        });
+      }
+
+      if (hasPassword) {
+        throw Object.assign(new Error('Email already registered with password'), {
+          statusCode: 409,
+          existingProvider: 'credentials',
+        });
+      }
+    }
+  }
+
   // Upsert user by email, then link provider
   const result = await app.db.query<{ id: string; email: string; display_name: string; avatar_url: string | null }>(
     `INSERT INTO users (email, display_name, avatar_url)

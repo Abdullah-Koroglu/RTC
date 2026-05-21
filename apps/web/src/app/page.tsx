@@ -25,9 +25,25 @@ function LandingContent() {
   const [inviteList, setInviteList] = useState<Array<{ id: string; email: string; displayName: string }>>([]);
   const [inviteSearching, setInviteSearching] = useState(false);
   const [inviteError, setInviteError] = useState('');
+  const [contacts, setContacts] = useState<Array<{ id: string; email: string; displayName: string }>>([]);
   const codeRef = useRef<HTMLInputElement>(null);
 
   const goToJoin = (roomCode: string) => router.push(`/join/${encodeURIComponent(roomCode)}`);
+
+  // Fetch contacts when create panel opens (for quick-add)
+  useEffect(() => {
+    if (!showCreate || !session) return;
+    fetch('/api/contacts')
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setContacts(data as Array<{ id: string; email: string; displayName: string }>); })
+      .catch(() => undefined);
+  }, [showCreate, session]);
+
+  const addToInviteList = (user: { id: string; email: string; displayName: string }) => {
+    if (!inviteList.some((u) => u.id === user.id)) {
+      setInviteList((prev) => [...prev, user]);
+    }
+  };
 
   const searchInvite = async () => {
     const email = inviteEmail.trim();
@@ -164,8 +180,22 @@ function LandingContent() {
             {(roomType === 'invite_only' || roomType === 'password') && session && (
               <div style={{ marginBottom: 12 }}>
                 <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Davetliler</p>
+
+                {/* Contacts quick-add chips */}
+                {contacts.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 8 }}>
+                    {contacts.filter((c) => !inviteList.some((u) => u.id === c.id)).map((c) => (
+                      <button key={c.id} onClick={() => addToInviteList(c)}
+                        style={{ padding: '4px 10px', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 20, color: '#93c5fd', fontSize: 11, cursor: 'pointer', fontFamily: 'Inter,sans-serif', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        + {c.displayName}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Email search for non-contacts */}
                 <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  <input type="email" placeholder="Email ile ara" value={inviteEmail}
+                  <input type="email" placeholder="Email ile ara veya ekle" value={inviteEmail}
                     onChange={(e) => { setInviteEmail(e.target.value); setInviteError(''); }}
                     onKeyDown={(e) => e.key === 'Enter' && void searchInvite()}
                     style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '8px 10px', color: 'white', fontSize: 12, outline: 'none', fontFamily: 'Inter,sans-serif' }}
@@ -179,12 +209,12 @@ function LandingContent() {
                 </div>
                 {inviteError && <p style={{ color: '#f87171', fontSize: 11, margin: '0 0 6px' }}>{inviteError}</p>}
                 {inviteList.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                     {inviteList.map((u) => (
-                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.04)', borderRadius: 7, padding: '6px 10px' }}>
-                        <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>{u.displayName} <span style={{ color: 'rgba(255,255,255,0.3)' }}>({u.email})</span></span>
+                      <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 20, padding: '4px 8px 4px 10px' }}>
+                        <span style={{ color: '#93c5fd', fontSize: 11 }}>{u.displayName}</span>
                         <button onClick={() => setInviteList((prev) => prev.filter((x) => x.id !== u.id))}
-                          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>×</button>
+                          style={{ background: 'none', border: 'none', color: 'rgba(147,197,253,0.6)', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: 0 }}>×</button>
                       </div>
                     ))}
                   </div>

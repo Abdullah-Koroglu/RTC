@@ -20,6 +20,12 @@ const GitHubIcon = () => (
   </svg>
 );
 
+const PROVIDER_LABELS: Record<string, string> = {
+  google: 'Google',
+  github: 'GitHub',
+  credentials: 'email ve şifre',
+};
+
 function SignInContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -28,6 +34,13 @@ function SignInContent() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+
+  // Provider conflict warning (redirected from OAuth flow)
+  const providerConflict = searchParams.get('error') === 'provider_conflict';
+  const existingProvider = searchParams.get('existing') ?? '';
+  const conflictMessage = providerConflict
+    ? `Bu email adresi ${PROVIDER_LABELS[existingProvider] ?? existingProvider} ile kayıtlı. Lütfen o yöntemle giriş yapın.`
+    : '';
 
   const handleOAuth = async (provider: string) => {
     setLoading(provider);
@@ -78,6 +91,12 @@ function SignInContent() {
           <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em', margin: 0 }}>Sign in to Link</h2>
           <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: 13, marginTop: 6 }}>Choose how you&apos;d like to continue</p>
         </div>
+
+        {conflictMessage && (
+          <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 10, padding: '12px 14px', marginBottom: 20, color: '#fca5a5', fontSize: 13, textAlign: 'center', lineHeight: 1.5 }}>
+            {conflictMessage}
+          </div>
+        )}
 
         {/* OAuth */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9, marginBottom: 20 }}>

@@ -5,7 +5,7 @@ import { MediasoupClient, type ParticipantState } from '@repo/rtc-sdk';
 import { useSignaling } from './useSignaling';
 import { getClientEnv } from '@/lib/env';
 
-export type RoomState = 'idle' | 'joining' | 'joined' | 'error';
+export type RoomState = 'idle' | 'joining' | 'joined' | 'error' | 'banned';
 
 export type { ParticipantState };
 
@@ -65,6 +65,7 @@ export interface UseRoomReturn {
   lowerHand: (targetPeerId?: string) => void;
   dismissUnmuteRequest: () => void;
   dismissJoinRequestAlert: () => void;
+  requestBannedJoin: () => void;
 }
 
 /**
@@ -158,8 +159,13 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       setRoomState('joined');
     } catch (err) {
       const joinError = err instanceof Error ? err : new Error('Failed to join room');
-      setError(joinError);
-      setRoomState('error');
+      const msg = joinError.message;
+      if (msg.includes('BANNED')) {
+        setRoomState('banned');
+      } else {
+        setError(joinError);
+        setRoomState('error');
+      }
       throw joinError;
     }
   }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId, initialMicEnabled, initialCameraEnabled]);
@@ -446,6 +452,15 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     }
   }, [roomId, peerId]);
 
+  // Auto-retry join when host approves a banned user's request
+  useEffect(() => {
+    if (!signalingClient || roomState !== 'banned') return;
+    const unsub = signalingClient.on('room.join-approved', () => {
+      void joinRoom().catch(() => undefined);
+    });
+    return unsub;
+  }, [signalingClient, roomState, joinRoom]);
+
   // Signaling event listeners
   useEffect(() => {
     if (!signalingClient || roomState !== 'joined') return;
@@ -728,6 +743,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     setNewJoinRequestAlert(null);
   }, []);
 
+  const requestBannedJoin = useCallback(() => {
+    sendRaw({ type: 'room.request-join', roomId, displayName: displayName ?? peerId });
+  }, [sendRaw, roomId, displayName, peerId]);
+
   return {
     roomState,
     error,
@@ -765,5 +784,6 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     lowerHand,
     dismissUnmuteRequest,
     dismissJoinRequestAlert,
+    requestBannedJoin,
   };
 }

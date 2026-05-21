@@ -61,9 +61,21 @@ export function authRoutes(app: FastifyInstance): void {
   app.post(
     '/auth/upsert-oauth-user',
     { preHandler: [app.authenticateInternal] },
-    async (request) => {
+    async (request, reply) => {
       const body = upsertOAuthUserBodySchema.parse(request.body);
-      return upsertOAuthUser(app, body);
+      try {
+        return await upsertOAuthUser(app, body);
+      } catch (err: unknown) {
+        const e = err as Error & { statusCode?: number; existingProvider?: string };
+        if (e.statusCode === 409) {
+          return reply.code(409).send({
+            code: 'PROVIDER_CONFLICT',
+            message: e.message,
+            existingProvider: e.existingProvider,
+          });
+        }
+        throw err;
+      }
     },
   );
 }

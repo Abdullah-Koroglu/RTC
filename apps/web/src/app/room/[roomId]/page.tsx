@@ -121,15 +121,17 @@ function CtrlBtn({ onClick, icon, label, danger, forceRed, lit, badge }: { onCli
 function ControlBar({ micOn, camOn, screenShare, chatOpen, breakoutOpen, unread, handRaised, onMic, onCam, onScreen, onChat, onBreakout, onHand, onLeave, isMobile }: { micOn: boolean; camOn: boolean; screenShare: boolean; chatOpen: boolean; breakoutOpen: boolean; unread: number; handRaised: boolean; onMic: () => void; onCam: () => void; onScreen: () => void; onChat: () => void; onBreakout: () => void; onHand: () => void; onLeave: () => void; isMobile: boolean }) {
   const L = (s: string) => isMobile ? undefined : s;
   return (
-    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: isMobile ? 72 : 82, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: 'rgba(10,12,18,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.06)', zIndex: 100, padding: '0 20px' }}>
-      <CtrlBtn onClick={onMic}      icon={micOn ? <IcMic s={20} /> : <IcMicOff s={20} />}    label={L(micOn ? 'Mute' : 'Unmute')}         danger={!micOn} />
-      <CtrlBtn onClick={onCam}      icon={camOn ? <IcVideo s={20} /> : <IcVideoOff s={20} />} label={L(camOn ? 'Stop Video' : 'Start Video')} danger={!camOn} />
-      <CtrlBtn onClick={onScreen}   icon={<IcMonitor s={20} />}                                label={L('Share')}    lit={screenShare} />
-      <CtrlBtn onClick={onChat}     icon={<IcChat s={20} />}                                   label={L('Chat')}     lit={chatOpen} badge={unread} />
-      <CtrlBtn onClick={onHand}     icon={<span style={{ fontSize: 18 }}>✋</span>}            label={L(handRaised ? 'El İndir' : 'El Kaldır')} lit={handRaised} />
-      <CtrlBtn onClick={onBreakout} icon={<IcGrid s={20} />}                                   label={L('Rooms')}    lit={breakoutOpen} />
-      <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)', margin: '0 4px' }} />
-      <CtrlBtn onClick={onLeave}    icon={<IcPhone s={20} />} label={L('Leave')} forceRed />
+    <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, height: isMobile ? 72 : 82, background: 'rgba(10,12,18,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid rgba(255,255,255,0.06)', zIndex: 100 }}>
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'center', gap: isMobile ? 6 : 10, padding: isMobile ? '0 12px' : '0 20px', overflowX: isMobile ? 'auto' : 'visible', scrollbarWidth: 'none' }}>
+        <CtrlBtn onClick={onMic}      icon={micOn ? <IcMic s={20} /> : <IcMicOff s={20} />}    label={L(micOn ? 'Mute' : 'Unmute')}         danger={!micOn} />
+        <CtrlBtn onClick={onCam}      icon={camOn ? <IcVideo s={20} /> : <IcVideoOff s={20} />} label={L(camOn ? 'Stop Video' : 'Start Video')} danger={!camOn} />
+        <CtrlBtn onClick={onScreen}   icon={<IcMonitor s={20} />}                                label={L('Share')}    lit={screenShare} />
+        <CtrlBtn onClick={onChat}     icon={<IcChat s={20} />}                                   label={L('Chat')}     lit={chatOpen} badge={unread} />
+        <CtrlBtn onClick={onHand}     icon={<span style={{ fontSize: 18 }}>✋</span>}            label={L(handRaised ? 'El İndir' : 'El Kaldır')} lit={handRaised} />
+        <CtrlBtn onClick={onBreakout} icon={<IcGrid s={20} />}                                   label={L('Rooms')}    lit={breakoutOpen} />
+        <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.08)', margin: '0 4px', flexShrink: 0 }} />
+        <CtrlBtn onClick={onLeave}    icon={<IcPhone s={20} />} label={L('Leave')} forceRed />
+      </div>
     </div>
   );
 }
@@ -155,7 +157,7 @@ function WaitingRoom({ roomId, isMobile = false }: { roomId: string; isMobile?: 
           <h3 style={{ color: 'white', fontSize: isMobile ? 17 : 21, fontWeight: 600, letterSpacing: '-0.02em', margin: '0 0 8px', fontFamily: 'Inter, sans-serif' }}>Waiting for others to join…</h3>
           <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: isMobile ? 13 : 14, fontFamily: 'Inter, sans-serif' }}>Share the link below to invite people</p>
         </div>
-        <div style={{ background: 'rgba(22,27,42,0.8)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: isMobile ? '12px 14px' : '14px 18px', display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14, width: '100%' }}>
+        <div className='w-full md:w-fit' style={{ background: 'rgba(22,27,42,0.8)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: isMobile ? '12px 14px' : '14px 18px', display: 'flex', alignItems: 'center', gap: isMobile ? 10 : 14 }}>
           <IcLink c="rgba(255,255,255,0.4)" />
           <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, fontFamily: 'Inter, sans-serif', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{link}</span>
           <button onClick={copy} style={{ background: copied ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.18)', border: `1px solid ${copied ? 'rgba(34,197,94,0.3)' : 'rgba(59,130,246,0.3)'}`, borderRadius: 8, padding: isMobile ? '6px 10px' : '7px 14px', color: copied ? '#22C55E' : '#3B82F6', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.2s', whiteSpace: 'nowrap', flexShrink: 0 }}>
@@ -640,6 +642,7 @@ export default function RoomPage() {
     lowerHand,
     dismissUnmuteRequest,
     dismissJoinRequestAlert,
+    requestBannedJoin,
   } = useRoom({
     roomId,
     peerId,
@@ -881,7 +884,39 @@ export default function RoomPage() {
         {roomState === 'error' && (
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 14, padding: '20px 28px', color: '#F87171', fontFamily: 'Inter, sans-serif', textAlign: 'center' }}>
-              Connection error. Please try again.
+              Bağlantı hatası. Lütfen tekrar deneyin.
+            </div>
+          </div>
+        )}
+
+        {roomState === 'banned' && (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Inter, sans-serif' }}>
+            <div style={{ background: 'rgba(22,27,42,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 18, padding: '32px 36px', textAlign: 'center', maxWidth: 360 }}>
+              <div style={{ fontSize: 40, marginBottom: 16 }}>🚫</div>
+              <p style={{ color: 'white', fontSize: 17, fontWeight: 700, margin: '0 0 8px' }}>Odadan çıkarıldınız</p>
+              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, margin: '0 0 24px', lineHeight: 1.6 }}>
+                Bu odaya doğrudan katılamazsınız.<br />Katılmak için host&apos;tan izin isteyebilirsiniz.
+              </p>
+              <button
+                onClick={() => {
+                  requestBannedJoin();
+                  void fetch(`/api/rooms/${roomId}/join-requests`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ peerId, displayName }),
+                  });
+                }}
+                style={{ width: '100%', padding: '13px', background: '#3B82F6', border: 'none', borderRadius: 11, color: 'white', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'Inter,sans-serif', marginBottom: 10 }}
+              >
+                Host&apos;tan İzin İste
+              </button>
+              <button onClick={() => router.push('/')}
+                style={{ width: '100%', padding: '11px', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 11, color: 'rgba(255,255,255,0.5)', fontSize: 13, cursor: 'pointer', fontFamily: 'Inter,sans-serif' }}>
+                Ana Sayfaya Dön
+              </button>
+              <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, margin: '16px 0 0' }}>
+                Host onayladığında otomatik olarak odaya bağlanacaksınız.
+              </p>
             </div>
           </div>
         )}

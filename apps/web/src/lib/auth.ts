@@ -71,6 +71,11 @@ export const authOptions: NextAuthOptions = {
             providerId: account!.providerAccountId,
           }),
         });
+        if (res.status === 409) {
+          const err = await res.json() as { existingProvider?: string };
+          const existing = err.existingProvider ?? 'another';
+          return `/auth/signin?error=provider_conflict&existing=${existing}`;
+        }
         if (!res.ok) return false;
         const dbUser = await res.json() as { id: string };
         user.id = dbUser.id;
