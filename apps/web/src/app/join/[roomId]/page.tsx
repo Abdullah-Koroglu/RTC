@@ -136,7 +136,7 @@ function PreviewToggle({ on, onToggle, iconOn, iconOff }: { on: boolean; onToggl
   );
 }
 
-type RoomInfo = { type: 'public' | 'password' | 'invite_only'; isExpired: boolean; isLocked: boolean };
+type RoomInfo = { type: 'public' | 'password' | 'invite_only'; isExpired: boolean; isLocked: boolean; hostUserId: string | null };
 type AccessPhase = 'loading' | 'password' | 'waiting' | 'lobby' | 'denied' | 'expired' | 'locked' | 'notfound';
 
 /* ── Waiting Room Screen ── */
@@ -279,6 +279,12 @@ export default function JoinLobbyPage() {
       if (room.isLocked) { setAccessPhase('locked'); return; }
 
       if (room.type === 'public') {
+        setAccessPhase('lobby');
+        return;
+      }
+
+      // Creator always bypasses all checks
+      if (session?.user?.id && room.hostUserId === session.user.id) {
         setAccessPhase('lobby');
         return;
       }
