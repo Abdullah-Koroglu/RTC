@@ -619,6 +619,8 @@ export default function RoomPage() {
     isHost,
     isRoomLocked,
     wasKicked,
+    localAudioEnabled,
+    localVideoEnabled,
     joinRequests,
     newJoinRequestAlert,
     raisedHands,
@@ -663,6 +665,10 @@ export default function RoomPage() {
   useEffect(() => {
     if (wasKicked) router.replace('/?kicked=1');
   }, [wasKicked, router]);
+
+  // Sync UI icons when host force-mutes (localAudio/VideoEnabled updated inside useRoom)
+  useEffect(() => { setIsAudioEnabled(localAudioEnabled); }, [localAudioEnabled]);
+  useEffect(() => { setIsVideoEnabled(localVideoEnabled); }, [localVideoEnabled]);
 
   // Play notification sound when a new join request arrives (host only)
   useEffect(() => {

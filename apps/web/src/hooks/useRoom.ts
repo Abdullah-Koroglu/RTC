@@ -41,6 +41,8 @@ export interface UseRoomReturn {
   isHost: boolean;
   isRoomLocked: boolean;
   wasKicked: boolean;
+  localAudioEnabled: boolean;
+  localVideoEnabled: boolean;
   joinRequests: Array<{ peerId: string; displayName: string }>;
   newJoinRequestAlert: { peerId: string; displayName: string } | null;
   raisedHands: Array<{ peerId: string; displayName: string }>;
@@ -341,9 +343,13 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     }
   }, []);
 
+  const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
+  const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
+
   const setAudioEnabled = useCallback((enabled: boolean) => {
     try {
       mediaClientRef.current?.setAudioEnabled(enabled);
+      setLocalAudioEnabled(enabled);
       if (signalingClient && roomState === 'joined') {
         void signalingClient.sendParticipantStateUpdate(roomId, { micEnabled: enabled }).catch(() => undefined);
       }
@@ -355,6 +361,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const setVideoEnabled = useCallback((enabled: boolean) => {
     try {
       mediaClientRef.current?.setVideoEnabled(enabled);
+      setLocalVideoEnabled(enabled);
       if (signalingClient && roomState === 'joined') {
         void signalingClient.sendParticipantStateUpdate(roomId, { cameraEnabled: enabled }).catch(() => undefined);
       }
@@ -762,6 +769,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     isHost: hostPeerId === peerId,
     isRoomLocked,
     wasKicked,
+    localAudioEnabled,
+    localVideoEnabled,
     joinRequests,
     newJoinRequestAlert,
     raisedHands,

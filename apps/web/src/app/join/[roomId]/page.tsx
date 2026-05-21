@@ -250,7 +250,7 @@ export default function JoinLobbyPage() {
   const router = useRouter();
   const params = useParams<{ roomId: string }>();
   const roomId = decodeURIComponent(params.roomId ?? '');
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
 
   const [roomInfo, setRoomInfo] = useState<RoomInfo | null>(null);
   const [accessPhase, setAccessPhase] = useState<AccessPhase>('loading');
@@ -270,8 +270,9 @@ export default function JoinLobbyPage() {
 
   const { cameras, microphones } = useDevices();
 
-  // Fetch room info and determine access phase
+  // Fetch room info and determine access phase — wait for session to finish loading
   useEffect(() => {
+    if (sessionStatus === 'loading') return; // Don't run until session is resolved
     void (async () => {
       const res = await fetch(`/api/rooms/${roomId}`).catch(() => null);
       if (!res) { setAccessPhase('notfound'); return; }
@@ -308,7 +309,7 @@ export default function JoinLobbyPage() {
         setAccessPhase('waiting');
       }
     })();
-  }, [roomId, session?.user?.id]);
+  }, [roomId, session?.user?.id, sessionStatus]);
 
   // Pre-fill name from session or sessionStorage
   useEffect(() => {
