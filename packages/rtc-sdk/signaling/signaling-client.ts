@@ -184,6 +184,13 @@ export class SignalingClient {
   private pendingRequests = new Map<string, { resolve: (data: unknown) => void; reject: (error: Error) => void; timeout: ReturnType<typeof setTimeout> }>();
   private requestIdCounter = 0;
 
+  private clearReconnectTimer(): void {
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
   constructor(private readonly options: SignalingClientOptions) {
     this.participantId = options.participantId;
   }
@@ -212,6 +219,7 @@ export class SignalingClient {
         const handleOpen = () => {
           socket.removeEventListener('open', handleOpen);
           socket.removeEventListener('error', handleError);
+          this.clearReconnectTimer();
           this.reconnectAttempt = 0;
           resolve();
         };
@@ -242,10 +250,7 @@ export class SignalingClient {
   }
 
   async disconnect(reason?: string): Promise<void> {
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
+    this.clearReconnectTimer();
 
     for (const [, { timeout }] of this.pendingRequests) {
       clearTimeout(timeout);
@@ -671,6 +676,16 @@ export class SignalingClient {
   private scheduleReconnect(): void {
     const config = { ...DEFAULT_RECONNECT_CONFIG, ...this.options.reconnect };
 
+    // Avoid stacking multiple reconnect timers from the same disconnect event.
+    if (this.reconnectTimer !== null) {
+      return;
+    }
+
+    // If a fresh socket is already connected/connecting, skip scheduling.
+    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
     if (this.reconnectAttempt >= config.maxAttempts) {
       const error = new Error(`Max reconnection attempts reached (${config.maxAttempts})`);
       this.emitter.emit('reconnect.failed', { attempt: this.reconnectAttempt, error });
@@ -686,9 +701,19 @@ export class SignalingClient {
     this.emitter.emit('reconnect.scheduled', { delayMs, attempt: this.reconnectAttempt });
 
     this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+
+      // Stale timer: connection may already be back, do not re-emit recovery events.
+      if (this.isConnected()) {
+        this.reconnectAttempt = 0;
+        return;
+      }
+
       try {
         await this.connect();
-        this.emitter.emit('reconnect.succeeded', { attempt: this.reconnectAttempt });
+        if (this.isConnected()) {
+          this.emitter.emit('reconnect.succeeded', { attempt: this.reconnectAttempt });
+        }
       } catch (error) {
         const err = error instanceof Error ? error : new Error('Reconnection failed');
         this.scheduleReconnect();

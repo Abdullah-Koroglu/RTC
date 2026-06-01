@@ -113,6 +113,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
+  const reconnectRecoveryInFlightRef = useRef(false);
   const initRef = useRef(false);
   const roomStateRef = useRef<RoomState>('idle');
   useEffect(() => { roomStateRef.current = roomState; }, [roomState]);
@@ -571,6 +572,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
     const unsub = signalingClient.on('reconnect.succeeded', () => {
       void (async () => {
+        if (reconnectRecoveryInFlightRef.current) {
+          return;
+        }
+        reconnectRecoveryInFlightRef.current = true;
         try {
           setIsRecoveringMedia(true);
           setError(null);
@@ -664,6 +669,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         } catch (err) {
           if (!cancelled) setError(err instanceof Error ? err : new Error('Failed to recover room after reconnect'));
         } finally {
+          reconnectRecoveryInFlightRef.current = false;
           if (!cancelled) {
             setIsRecoveringMedia(false);
           }
