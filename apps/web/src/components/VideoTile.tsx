@@ -1,7 +1,6 @@
 'use client';
 
 import { memo, useRef, useState, useEffect } from 'react';
-import { useCanvasVideo } from '@/hooks/useCanvasVideo';
 
 export interface VideoTileProps {
   stream: MediaStream;
@@ -52,11 +51,15 @@ const IcMinimize = ({ s = 13, c = 'currentColor' }: { s?: number; c?: string }) 
 
 function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   const [speaking, setSpeaking] = useState(false);
-  const ctxRef = useRef<AudioContext | null>(null);
+  const speakingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (disabled) { setSpeaking(false); return; }
+    if (disabled) {
+      speakingRef.current = false;
+      setSpeaking(false);
+      return;
+    }
     if (stream.getAudioTracks().length === 0) return;
 
     let ctx: AudioContext;
@@ -64,11 +67,10 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
       ctx = new AudioContext();
     } catch { return; }
 
-    ctxRef.current = ctx;
     const source = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();
     // Smaller fftSize = less CPU per analysis tick
-    analyser.fftSize = 256;
+    analyser.fftSize = 128;
     analyser.smoothingTimeConstant = 0.6;
     source.connect(analyser);
 
@@ -82,22 +84,28 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
       const avg = sum / data.length;
       if (avg > 12) {
         silenceFrames = 0;
-        setSpeaking(true);
+        if (!speakingRef.current) {
+          speakingRef.current = true;
+          setSpeaking(true);
+        }
       } else {
         silenceFrames++;
         // ~8 ticks × 80ms = ~640ms of silence before clearing
-        if (silenceFrames > 8) setSpeaking(false);
+        if (silenceFrames > 3 && speakingRef.current) {
+          speakingRef.current = false;
+          setSpeaking(false);
+        }
       }
       // 80ms interval ≈ 12.5 fps — enough for speaking indicator, 5× less CPU than 60fps RAF
-      timerRef.current = setTimeout(tick, 80);
+      timerRef.current = setTimeout(tick, 180);
     };
-    timerRef.current = setTimeout(tick, 80);
+    timerRef.current = setTimeout(tick, 180);
 
     return () => {
       if (timerRef.current !== null) clearTimeout(timerRef.current);
       source.disconnect();
       void ctx.close().catch(() => undefined);
-      ctxRef.current = null;
+      speakingRef.current = false;
       setSpeaking(false);
     };
   }, [stream, disabled]);
@@ -106,7 +114,7 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
 }
 
 export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, color, photo }: VideoTileProps) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
@@ -123,8 +131,20 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
   }, []);
 
-  // Cross-browser canvas renderer: rVFC when available, rAF fallback
-  useCanvasVideo(hasVideoTracks ? stream : null, canvasRef as React.RefObject<HTMLCanvasElement>, hasVideoTracks);
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    videoEl.srcObject = hasVideoTracks ? stream : null;
+    videoEl.muted = true;
+    if (hasVideoTracks) {
+      void videoEl.play().catch(() => undefined);
+    }
+
+    return () => {
+      videoEl.srcObject = null;
+    };
+  }, [stream, hasVideoTracks]);
 
   useEffect(() => {
     const audioEl = audioRef.current;
@@ -264,8 +284,11 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
         )}
       </div>
 
-      <canvas
-        ref={canvasRef}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
         style={{
           position: 'absolute', inset: 0, width: '100%', height: '100%',
           objectFit: 'cover',

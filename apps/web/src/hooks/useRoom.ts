@@ -108,6 +108,9 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const subscribedProducerIdsRef = useRef<Set<string>>(new Set());
   // producerId → streamKey for screen producers
   const screenProducerKeysRef = useRef<Map<string, string>>(new Map());
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncInFlightRef = useRef(false);
+  const syncQueuedRef = useRef(false);
   const initRef = useRef(false);
   const roomStateRef = useRef<RoomState>('idle');
   useEffect(() => { roomStateRef.current = roomState; }, [roomState]);
@@ -353,6 +356,43 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       });
     }
   }, [peerId, roomId]);
+
+  const runCoalescedProducerSync = useCallback(() => {
+    if (syncInFlightRef.current) {
+      syncQueuedRef.current = true;
+      return;
+    }
+
+    syncInFlightRef.current = true;
+    void syncRemoteProducers()
+      .catch((err) => {
+        console.error('Remote producer sync failed', { roomId, peerId, error: err });
+      })
+      .finally(() => {
+        syncInFlightRef.current = false;
+        if (syncQueuedRef.current) {
+          syncQueuedRef.current = false;
+          runCoalescedProducerSync();
+        }
+      });
+  }, [peerId, roomId, syncRemoteProducers]);
+
+  const scheduleRemoteProducerSync = useCallback(() => {
+    if (syncTimerRef.current !== null) return;
+    syncTimerRef.current = setTimeout(() => {
+      syncTimerRef.current = null;
+      runCoalescedProducerSync();
+    }, 100);
+  }, [runCoalescedProducerSync]);
+
+  useEffect(() => {
+    return () => {
+      if (syncTimerRef.current !== null) {
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const publishMedia = useCallback(
     async (source: MediaStreamConstraints | MediaStream = { audio: true, video: true }): Promise<MediaStream | null> => {
@@ -653,9 +693,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           void reconcile().catch((err) => {
             console.error('Reconcile failed after participant joined', { roomId, peerId, remotePeerId, error: err });
           });
-          void syncRemoteProducers().catch((err) => {
-            console.error('Sync failed after participant joined', { roomId, peerId, remotePeerId, error: err });
-          });
+          scheduleRemoteProducerSync();
           // Re-broadcast our photo so the new joiner can see it
           if (photoRef.current !== undefined) {
             void signalingClient.sendPhotoAnnounce(roomId, photoRef.current ?? null).catch(() => undefined);
@@ -811,7 +849,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('producer.new', ({ peerId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
-          void syncRemoteProducers().catch(() => undefined);
+          scheduleRemoteProducerSync();
         }
       }),
     );
@@ -819,7 +857,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('producer.closed', ({ peerId: remotePeerId }) => {
         if (remotePeerId !== peerId) {
-          void syncRemoteProducers().catch(() => undefined);
+          scheduleRemoteProducerSync();
         }
       }),
     );
@@ -837,7 +875,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     return () => {
       listeners.forEach((unsub) => unsub());
     };
-  }, [signalingClient, roomState, peerId, syncRemoteProducers, reconcile, roomId]);
+  }, [signalingClient, roomState, peerId, syncRemoteProducers, reconcile, roomId, scheduleRemoteProducerSync]);
 
   // Broadcast photo-announce on join and whenever photo changes (session may load late)
   useEffect(() => {
