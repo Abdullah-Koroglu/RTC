@@ -266,6 +266,7 @@ export default function JoinLobbyPage() {
   const [selectedMic, setSelectedMic] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [camError, setCamError] = useState(false);
+  const [forceVideoPreview, setForceVideoPreview] = useState(false);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -274,6 +275,7 @@ export default function JoinLobbyPage() {
 
   const { cameras, microphones } = useDevices();
   const canRenderPreview = typeof window !== 'undefined' && typeof (window as { ImageCapture?: unknown }).ImageCapture === 'function';
+  const useCanvasPreview = canRenderPreview && !forceVideoPreview;
 
   // Fetch room info and determine access phase — wait for session to finish loading
   useEffect(() => {
@@ -355,6 +357,7 @@ export default function JoinLobbyPage() {
       .then((stream) => {
         previewStreamRef.current = stream;
         setPreviewStream(stream);
+        setForceVideoPreview(false);
         setCamError(false);
       })
       .catch(() => {
@@ -372,7 +375,7 @@ export default function JoinLobbyPage() {
     const track = stream?.getVideoTracks()[0];
     const ImageCaptureCtor = (window as unknown as { ImageCapture?: new (track: MediaStreamTrack) => { grabFrame: () => Promise<ImageBitmap> } }).ImageCapture;
 
-    if (!canvas || !track || !camOn || !ImageCaptureCtor) return;
+    if (!canvas || !track || !camOn || !ImageCaptureCtor || forceVideoPreview) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -380,6 +383,7 @@ export default function JoinLobbyPage() {
     const capture = new ImageCaptureCtor(track);
     let disposed = false;
     let rafId: number | null = null;
+    let consecutiveFrameErrors = 0;
 
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
@@ -420,8 +424,14 @@ export default function JoinLobbyPage() {
         const bitmap = await capture.grabFrame();
         drawMirroredCover(bitmap);
         bitmap.close();
+        consecutiveFrameErrors = 0;
       } catch {
-        // Ignore transient frame errors while preview restarts.
+        // If ImageCapture keeps failing, force the reliable <video> fallback.
+        consecutiveFrameErrors += 1;
+        if (consecutiveFrameErrors >= 4) {
+          setForceVideoPreview(true);
+          return;
+        }
       }
       if (!disposed) {
         rafId = window.requestAnimationFrame(() => {
@@ -439,14 +449,14 @@ export default function JoinLobbyPage() {
       if (rafId !== null) window.cancelAnimationFrame(rafId);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
-  }, [camOn, selectedCam, previewStream]);
+  }, [camOn, selectedCam, previewStream, forceVideoPreview]);
 
   // Fallback preview path for browsers without ImageCapture support.
   useEffect(() => {
     const video = previewVideoRef.current;
     if (!video) return;
 
-    const useVideoPreview = camOn && !camError && !canRenderPreview && !!previewStream;
+    const useVideoPreview = camOn && !camError && (!canRenderPreview || forceVideoPreview) && !!previewStream;
     video.srcObject = useVideoPreview ? previewStream : null;
     if (useVideoPreview) {
       void video.play().catch(() => undefined);
@@ -455,7 +465,7 @@ export default function JoinLobbyPage() {
     return () => {
       video.srcObject = null;
     };
-  }, [camOn, camError, canRenderPreview, previewStream]);
+  }, [camOn, camError, canRenderPreview, forceVideoPreview, previewStream]);
 
   const initials = name.trim()
     ? name.trim().split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -583,17 +593,17 @@ export default function JoinLobbyPage() {
           {/* Actual camera preview */}
           <canvas
             ref={previewCanvasRef}
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: camOn && !camError && canRenderPreview ? 'block' : 'none' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: camOn && !camError && useCanvasPreview ? 'block' : 'none' }}
           />
           <video
             ref={previewVideoRef}
             autoPlay
             playsInline
             muted
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: camOn && !camError && !canRenderPreview ? 'block' : 'none' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: camOn && !camError && !useCanvasPreview ? 'block' : 'none' }}
           />
           {/* Avatar fallback */}
-          {(!camOn || camError || !canRenderPreview) && (
+          {(!camOn || camError || !previewStream) && (
             <div style={{ textAlign: 'center' }}>
               {initials !== '?' ? (
                 <div style={{ width: 68, height: 68, borderRadius: '50%', background: 'linear-gradient(135deg,rgba(59,130,246,0.8),rgba(59,130,246,0.5))', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px', fontSize: 24, fontWeight: 700, color: 'white', boxShadow: '0 0 0 3px rgba(59,130,246,0.2)' }}>{initials}</div>
@@ -603,7 +613,7 @@ export default function JoinLobbyPage() {
                 </div>
               )}
               <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                {camError ? 'Kamera kullanılamıyor' : !canRenderPreview ? 'Tarayici onizleme desteklemiyor' : 'Kamera kapalı'}
+                {camError ? 'Kamera kullanılamıyor' : !camOn ? 'Kamera kapalı' : 'Kamera hazırlanıyor'}
               </span>
             </div>
           )}
