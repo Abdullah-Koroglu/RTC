@@ -892,15 +892,30 @@ export default function RoomPage() {
       return constraints;
     };
 
-    void getSource().then((source) =>
-      publishMedia(source).then((stream) => {
-        if (stream) { setHasPublished(true); applyInitialState(); }
-      }).catch(() => {
-        void publishMedia({ video: true, audio: true }).then((stream) => {
-          if (stream) { setHasPublished(true); applyInitialState(); }
+    void getSource().then(async (source) => {
+      let stream: MediaStream | null = await publishMedia(source);
+
+      // publishMedia returns null on failure (it does not throw), so this
+      // explicit fallback is required for refresh/device-id mismatch cases.
+      if (!stream) {
+        stream = await publishMedia({
+          video: camOn,
+          audio: micOn,
         });
-      })
-    );
+      }
+
+      // Final fallback: try full AV if user preferences produced no stream.
+      if (!stream) {
+        stream = await publishMedia({ video: true, audio: true });
+      }
+
+      if (stream) {
+        setHasPublished(true);
+        applyInitialState();
+      }
+    }).catch(() => {
+      // Ignore; publishMedia already reports internal errors.
+    });
   }, [roomState, hasPublished, publishMedia, setAudioEnabled, setVideoEnabled]);
 
   // Toast on remote peer join/leave
