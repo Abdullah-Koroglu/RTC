@@ -341,7 +341,19 @@ export default function RoomScreen() {
   // Auto-publish
   useEffect(() => {
     if (roomState !== 'joined' || hasPublished || !ready) return;
-    const constraints = { video: { facingMode: 'user' }, audio: true };
+    const wantsAudio = initialMicEnabled;
+    const wantsVideo = initialCameraEnabled;
+
+    // If user joins with both disabled, skip capture to avoid unnecessary prompts.
+    if (!wantsAudio && !wantsVideo) {
+      setHasPublished(true);
+      return;
+    }
+
+    const constraints = {
+      video: wantsVideo ? { facingMode: 'user' } : false,
+      audio: wantsAudio,
+    };
 
     void publishMedia(constraints).then((stream) => {
       if (stream) {

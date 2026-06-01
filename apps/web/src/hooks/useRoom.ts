@@ -194,6 +194,11 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       );
       applyRoomSnapshot(snapshot);
       setRoomState('joined');
+      // Trigger an immediate producer discovery after join so refreshes don't
+      // wait for periodic fallback before remote media appears.
+      setTimeout(() => {
+        void syncRemoteProducers().catch(() => undefined);
+      }, 0);
     } catch (err) {
       const joinError = err instanceof Error ? err : new Error('Failed to join room');
       const msg = joinError.message;
@@ -405,10 +410,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       } catch (err) {
         console.error('Failed to publish local media', { roomId, peerId, error: err });
         setError(err instanceof Error ? err : new Error('Failed to publish media'));
+        // Even when local capture/publish fails, try consuming remotes.
+        scheduleRemoteProducerSync();
         return null;
       }
     },
-    [syncRemoteProducers],
+    [syncRemoteProducers, scheduleRemoteProducerSync],
   );
 
   const unpublishMedia = useCallback((kind: 'audio' | 'video') => {
@@ -697,6 +704,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           // Re-broadcast our photo so the new joiner can see it
           if (photoRef.current !== undefined) {
             void signalingClient.sendPhotoAnnounce(roomId, photoRef.current ?? null).catch(() => undefined);
+            // Re-announce shortly after to cover late listener attachment on the joiner.
+            setTimeout(() => {
+              void signalingClient.sendPhotoAnnounce(roomId, photoRef.current ?? null).catch(() => undefined);
+            }, 1200);
           }
         }
       }),

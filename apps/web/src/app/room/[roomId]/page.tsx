@@ -943,6 +943,11 @@ export default function RoomPage() {
     if (last && !last.isSelf) setUnreadCount((n) => n + 1);
   }, [chatMessages, isChatOpen]);
 
+  // Keep local hand state aligned with room events (e.g. host lowers hand).
+  useEffect(() => {
+    setMyHandRaised(raisedHands.some((h) => h.peerId === peerId));
+  }, [raisedHands, peerId]);
+
   // Show preview stream while signaling handshake is in progress; switch to
   // localStream (set by publishMedia) once producers are established.
   const displayLocalStream = localStream ?? previewStream;

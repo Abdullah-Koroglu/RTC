@@ -55,6 +55,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [participants, setParticipants] = useState<Map<string, ParticipantViewModel>>(new Map());
+  const pendingPhotosRef = useRef<Map<string, string | null>>(new Map());
 
   const mediaClientRef = useRef<MediasoupRNClient | null>(null);
   const producerOwnerRef = useRef<Map<string, string>>(new Map());
@@ -75,10 +76,15 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       const next = new Map<string, ParticipantViewModel>();
       for (const participant of snapshot.participants) {
         const existing = prev.get(participant.participantId);
+        const queuedPhoto = pendingPhotosRef.current.get(participant.participantId);
         next.set(participant.participantId, {
           ...participant,
+          ...(queuedPhoto !== undefined ? { photo: queuedPhoto } : {}),
           ...(existing?.photo !== undefined ? { photo: existing.photo } : {}),
         });
+        if (queuedPhoto !== undefined) {
+          pendingPhotosRef.current.delete(participant.participantId);
+        }
       }
       return next;
     });
@@ -317,6 +323,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   useEffect(() => {
     if (!signalingClient || roomState !== 'joined') return;
     const listeners: (() => void)[] = [];
+    const photoReannounceTimers: Array<ReturnType<typeof setTimeout>> = [];
 
     listeners.push(
       signalingClient.on('room.participant-joined', ({ participantId: remotePeerId }) => {
@@ -325,6 +332,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           void syncRemoteProducers();
           if (photoRef.current !== undefined) {
             void signalingClient.sendPhotoAnnounce(roomId, photoRef.current ?? null).catch(() => undefined);
+            const timer = setTimeout(() => {
+              void signalingClient.sendPhotoAnnounce(roomId, photoRef.current ?? null).catch(() => undefined);
+            }, 1200);
+            photoReannounceTimers.push(timer);
           }
         }
       }),
@@ -356,7 +367,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         if (remotePeerId !== peerId) {
           setParticipants((prev) => {
             const existing = prev.get(remotePeerId);
-            if (!existing) return prev;
+            if (!existing) {
+              pendingPhotosRef.current.set(remotePeerId, photo);
+              return prev;
+            }
             const next = new Map(prev);
             next.set(remotePeerId, { ...existing, photo });
             return next;
@@ -389,7 +403,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }),
     );
 
-    return () => listeners.forEach((u) => u());
+    return () => {
+      listeners.forEach((u) => u());
+      photoReannounceTimers.forEach((timer) => clearTimeout(timer));
+    };
   }, [signalingClient, roomState, peerId, syncRemoteProducers, reconcile, roomId]);
 
   // Recover room + media after signaling reconnect so offline/online transitions are seamless.
