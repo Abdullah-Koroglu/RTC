@@ -2,6 +2,27 @@
 
 import { memo, useRef, useState, useEffect } from 'react';
 
+type ResolutionPreset = 'auto' | '240p' | '360p' | '480p' | '720p' | '1080p';
+type FpsPreset = 'auto' | '5' | '10' | '15' | '24' | '30';
+
+const RESOLUTION_OPTIONS: ResolutionPreset[] = ['auto', '240p', '360p', '480p', '720p', '1080p'];
+const FPS_OPTIONS: FpsPreset[] = ['auto', '5', '10', '15', '24', '30'];
+
+const RESOLUTION_DIMENSIONS: Record<Exclude<ResolutionPreset, 'auto'>, { width: number; height: number }> = {
+  '240p': { width: 426, height: 240 },
+  '360p': { width: 640, height: 360 },
+  '480p': { width: 854, height: 480 },
+  '720p': { width: 1280, height: 720 },
+  '1080p': { width: 1920, height: 1080 },
+};
+
+const SS_TILE_QUALITY = 'rtc:tileQualityPrefs';
+
+interface TileQualitySetting {
+  resolution: ResolutionPreset;
+  fps: FpsPreset;
+}
+
 export interface VideoTileProps {
   stream: MediaStream;
   label: string;
@@ -12,6 +33,7 @@ export interface VideoTileProps {
   lowLatency?: boolean | undefined;
   color?: string | undefined;
   photo?: string | null | undefined;
+  qualityStorageKey?: string | undefined;
 }
 
 const TILE_COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B', '#EF4444'];
@@ -49,6 +71,51 @@ const IcMinimize = ({ s = 13, c = 'currentColor' }: { s?: number; c?: string }) 
     <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
   </svg>
 );
+
+const IcTune = ({ s = 13, c = 'currentColor' }: { s?: number; c?: string }) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" stroke={c} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="21" x2="4" y2="14"/>
+    <line x1="4" y1="10" x2="4" y2="3"/>
+    <line x1="12" y1="21" x2="12" y2="12"/>
+    <line x1="12" y1="8" x2="12" y2="3"/>
+    <line x1="20" y1="21" x2="20" y2="16"/>
+    <line x1="20" y1="12" x2="20" y2="3"/>
+    <line x1="1" y1="14" x2="7" y2="14"/>
+    <line x1="9" y1="8" x2="15" y2="8"/>
+    <line x1="17" y1="16" x2="23" y2="16"/>
+  </svg>
+);
+
+function loadTileQuality(key: string): TileQualitySetting {
+  if (typeof window === 'undefined') {
+    return { resolution: 'auto', fps: 'auto' };
+  }
+  try {
+    const raw = sessionStorage.getItem(SS_TILE_QUALITY);
+    if (!raw) return { resolution: 'auto', fps: 'auto' };
+    const parsed = JSON.parse(raw) as Record<string, TileQualitySetting>;
+    const value = parsed[key];
+    if (!value) return { resolution: 'auto', fps: 'auto' };
+    if (!RESOLUTION_OPTIONS.includes(value.resolution) || !FPS_OPTIONS.includes(value.fps)) {
+      return { resolution: 'auto', fps: 'auto' };
+    }
+    return value;
+  } catch {
+    return { resolution: 'auto', fps: 'auto' };
+  }
+}
+
+function saveTileQuality(key: string, value: TileQualitySetting): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = sessionStorage.getItem(SS_TILE_QUALITY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, TileQualitySetting>) : {};
+    parsed[key] = value;
+    sessionStorage.setItem(SS_TILE_QUALITY, JSON.stringify(parsed));
+  } catch {
+    // best-effort persistence only
+  }
+}
 
 function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   const [speaking, setSpeaking] = useState(false);
@@ -114,13 +181,27 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   return speaking;
 }
 
-export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, lowLatency = false, color, photo }: VideoTileProps) {
+export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, lowLatency = false, color, photo, qualityStorageKey }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
+  const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
   const [cssFullscreen, setCssFullscreen] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const qualityKey = qualityStorageKey ?? label;
+  const [quality, setQuality] = useState<TileQualitySetting>(() => loadTileQuality(qualityKey));
+
+  useEffect(() => {
+    setQuality(loadTileQuality(qualityKey));
+  }, [qualityKey]);
+
+  useEffect(() => {
+    saveTileQuality(qualityKey, quality);
+  }, [qualityKey, quality]);
 
   const tileColor = color ?? colorFromLabel(label);
   const initials = getInitials(label);
@@ -129,6 +210,7 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
   const isSpeaking = useSpeaking(stream, muted || isMicMuted === true);
   const hasVideoTracks = stream.getVideoTracks().length > 0 && cameraEnabled !== false;
   const inFullscreen = isNativeFullscreen || cssFullscreen;
+  const renderWithCanvas = hasVideoTracks && (quality.resolution !== 'auto' || quality.fps !== 'auto');
 
   useEffect(() => {
     setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
@@ -148,6 +230,117 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
       videoEl.srcObject = null;
     };
   }, [stream, hasVideoTracks]);
+
+  useEffect(() => {
+    const track = stream.getVideoTracks()[0];
+    if (!track || typeof track.applyConstraints !== 'function') return;
+
+    const constraints: MediaTrackConstraints = {};
+    if (quality.resolution !== 'auto') {
+      const preset = RESOLUTION_DIMENSIONS[quality.resolution];
+      constraints.width = { ideal: preset.width, max: preset.width };
+      constraints.height = { ideal: preset.height, max: preset.height };
+    }
+    if (quality.fps !== 'auto') {
+      const fps = Number(quality.fps);
+      constraints.frameRate = { ideal: fps, max: fps };
+    }
+    if (Object.keys(constraints).length === 0) return;
+
+    void track.applyConstraints(constraints).catch(() => {
+      // Some remote tracks may reject constraints; visual throttling still applies.
+    });
+  }, [stream, quality]);
+
+  useEffect(() => {
+    if (!renderWithCanvas) return;
+
+    const videoEl = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!videoEl || !canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let rafId: number | null = null;
+    let disposed = false;
+    let lastDraw = 0;
+
+    const fpsLimit = quality.fps === 'auto' ? 0 : Number(quality.fps);
+    const frameInterval = fpsLimit > 0 ? (1000 / fpsLimit) : 0;
+
+    const getTargetSize = () => {
+      if (quality.resolution !== 'auto') {
+        return RESOLUTION_DIMENSIONS[quality.resolution];
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      return {
+        width: Math.max(1, Math.round(rect.width * dpr)),
+        height: Math.max(1, Math.round(rect.height * dpr)),
+      };
+    };
+
+    const resizeCanvas = () => {
+      const target = getTargetSize();
+      if (canvas.width !== target.width || canvas.height !== target.height) {
+        canvas.width = target.width;
+        canvas.height = target.height;
+      }
+    };
+
+    const drawCover = () => {
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const iw = videoEl.videoWidth || cw;
+      const ih = videoEl.videoHeight || ch;
+      if (!cw || !ch || !iw || !ih) return;
+
+      const scale = Math.max(cw / iw, ch / ih);
+      const dw = iw * scale;
+      const dh = ih * scale;
+      const dx = (cw - dw) / 2;
+      const dy = (ch - dh) / 2;
+
+      ctx.save();
+      ctx.clearRect(0, 0, cw, ch);
+      if (mirrored) {
+        ctx.translate(cw, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(videoEl, dx, dy, dw, dh);
+      ctx.restore();
+    };
+
+    const loop = (ts: number) => {
+      if (disposed) return;
+
+      if (frameInterval > 0 && ts - lastDraw < frameInterval) {
+        rafId = window.requestAnimationFrame(loop);
+        return;
+      }
+
+      resizeCanvas();
+      drawCover();
+      lastDraw = ts;
+      rafId = window.requestAnimationFrame(loop);
+    };
+
+    rafId = window.requestAnimationFrame(loop);
+
+    const onResize = () => resizeCanvas();
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      disposed = true;
+      window.removeEventListener('resize', onResize);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+  }, [renderWithCanvas, quality, mirrored]);
 
   useEffect(() => {
     const audioEl = audioRef.current;
@@ -204,6 +397,20 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
       document.removeEventListener('webkitfullscreenchange', onChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const panel = settingsPanelRef.current;
+      if (!panel) return;
+      if (!panel.contains(event.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', onPointerDown);
+    return () => window.removeEventListener('mousedown', onPointerDown);
+  }, [settingsOpen]);
 
   const enterFullscreen = () => {
     const el = articleRef.current;
@@ -298,6 +505,18 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
           transform: mirrored ? 'scaleX(-1)' : undefined,
           willChange: lowLatency ? 'auto' : 'transform',
           display: hasVideoTracks ? 'block' : 'none',
+          visibility: renderWithCanvas ? 'hidden' : 'visible',
+        }}
+      />
+
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          display: renderWithCanvas ? 'block' : 'none',
         }}
       />
 
@@ -337,6 +556,116 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
           : <IcMaximize s={13} c="rgba(255,255,255,0.7)" />
         }
       </button>
+
+      {/* Per-tile video quality control */}
+      <div
+        ref={settingsPanelRef}
+        style={{
+          position: 'absolute',
+          top: 8,
+          left: 8,
+          zIndex: 2,
+          pointerEvents: 'auto',
+        }}
+      >
+        <button
+          type="button"
+          title="Video quality"
+          onClick={(event) => {
+            event.stopPropagation();
+            setSettingsOpen((v) => !v);
+          }}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            background: 'rgba(0,0,0,0.55)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: 'rgba(255,255,255,0.78)',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <IcTune s={13} c="rgba(255,255,255,0.78)" />
+        </button>
+
+        {settingsOpen && (
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              marginTop: 6,
+              minWidth: 150,
+              background: 'rgba(10,12,18,0.95)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 10,
+              padding: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+              boxShadow: '0 10px 30px rgba(0,0,0,0.35)',
+            }}
+          >
+            <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+              Video Quality
+            </div>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>Resolution</span>
+              <select
+                value={quality.resolution}
+                onChange={(event) => {
+                  const resolution = event.target.value as ResolutionPreset;
+                  setQuality((prev) => ({ ...prev, resolution }));
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  borderRadius: 8,
+                  padding: '6px 8px',
+                  color: 'rgba(255,255,255,0.88)',
+                  fontSize: 12,
+                  outline: 'none',
+                }}
+              >
+                {RESOLUTION_OPTIONS.map((option) => (
+                  <option key={option} value={option} style={{ background: '#141820', color: 'white' }}>
+                    {option === 'auto' ? 'Auto' : option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11 }}>FPS</span>
+              <select
+                value={quality.fps}
+                onChange={(event) => {
+                  const fps = event.target.value as FpsPreset;
+                  setQuality((prev) => ({ ...prev, fps }));
+                }}
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  borderRadius: 8,
+                  padding: '6px 8px',
+                  color: 'rgba(255,255,255,0.88)',
+                  fontSize: 12,
+                  outline: 'none',
+                }}
+              >
+                {FPS_OPTIONS.map((option) => (
+                  <option key={option} value={option} style={{ background: '#141820', color: 'white' }}>
+                    {option === 'auto' ? 'Auto' : `${option} FPS`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+      </div>
 
       {!isTouchDevice && <style>{`article:hover .tile-fs-btn { opacity: 1 !important; }`}</style>}
     </article>
