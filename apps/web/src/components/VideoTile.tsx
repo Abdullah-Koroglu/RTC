@@ -9,6 +9,7 @@ export interface VideoTileProps {
   mirrored?: boolean | undefined;
   isMicMuted?: boolean | undefined;
   cameraEnabled?: boolean | undefined;
+  lowLatency?: boolean | undefined;
   color?: string | undefined;
   photo?: string | null | undefined;
 }
@@ -113,7 +114,7 @@ function useSpeaking(stream: MediaStream, disabled: boolean): boolean {
   return speaking;
 }
 
-export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, color, photo }: VideoTileProps) {
+export const VideoTile = memo(function VideoTile({ stream, label, muted = false, mirrored = false, isMicMuted = false, cameraEnabled, lowLatency = false, color, photo }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
@@ -123,7 +124,9 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
 
   const tileColor = color ?? colorFromLabel(label);
   const initials = getInitials(label);
-  const isSpeaking = useSpeaking(stream, isMicMuted === true);
+  // Self tile is typically muted locally; running analyser there adds CPU load
+  // without UX value and can make local preview feel less responsive on weak devices.
+  const isSpeaking = useSpeaking(stream, muted || isMicMuted === true);
   const hasVideoTracks = stream.getVideoTracks().length > 0 && cameraEnabled !== false;
   const inFullscreen = isNativeFullscreen || cssFullscreen;
 
@@ -254,9 +257,9 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
         borderRadius: 14,
         overflow: 'hidden',
         background: '#141820',
-        border: isSpeaking ? `2px solid ${tileColor}` : '2px solid rgba(255,255,255,0.04)',
-        boxShadow: isSpeaking ? `0 0 0 4px ${tileColor}33, 0 0 20px ${tileColor}22` : undefined,
-        transition: 'border-color 0.15s, box-shadow 0.15s',
+        border: lowLatency ? '1px solid rgba(255,255,255,0.06)' : (isSpeaking ? `2px solid ${tileColor}` : '2px solid rgba(255,255,255,0.04)'),
+        boxShadow: lowLatency ? undefined : (isSpeaking ? `0 0 0 4px ${tileColor}33, 0 0 20px ${tileColor}22` : undefined),
+        transition: lowLatency ? undefined : 'border-color 0.15s, box-shadow 0.15s',
         cursor: 'pointer',
         minHeight: 0,
       };
@@ -293,7 +296,7 @@ export const VideoTile = memo(function VideoTile({ stream, label, muted = false,
           position: 'absolute', inset: 0, width: '100%', height: '100%',
           objectFit: 'cover',
           transform: mirrored ? 'scaleX(-1)' : undefined,
-          willChange: 'transform',  // GPU composite hint
+          willChange: lowLatency ? 'auto' : 'transform',
           display: hasVideoTracks ? 'block' : 'none',
         }}
       />

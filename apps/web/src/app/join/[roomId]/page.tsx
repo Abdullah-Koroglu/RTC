@@ -268,7 +268,9 @@ export default function JoinLobbyPage() {
   const [camError, setCamError] = useState(false);
 
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const previewStreamRef = useRef<MediaStream | null>(null);
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
   const { cameras, microphones } = useDevices();
   const canRenderPreview = typeof window !== 'undefined' && typeof (window as { ImageCapture?: unknown }).ImageCapture === 'function';
@@ -339,6 +341,7 @@ export default function JoinLobbyPage() {
         previewStreamRef.current.getTracks().forEach((t) => t.stop());
         previewStreamRef.current = null;
       }
+      setPreviewStream(null);
     };
 
     if (!camOn) { stopPreview(); return; }
@@ -351,6 +354,7 @@ export default function JoinLobbyPage() {
     navigator.mediaDevices.getUserMedia(constraints)
       .then((stream) => {
         previewStreamRef.current = stream;
+        setPreviewStream(stream);
         setCamError(false);
       })
       .catch(() => {
@@ -364,7 +368,7 @@ export default function JoinLobbyPage() {
   // Draw camera preview to canvas (without HTML video tag)
   useEffect(() => {
     const canvas = previewCanvasRef.current;
-    const stream = previewStreamRef.current;
+    const stream = previewStream;
     const track = stream?.getVideoTracks()[0];
     const ImageCaptureCtor = (window as unknown as { ImageCapture?: new (track: MediaStreamTrack) => { grabFrame: () => Promise<ImageBitmap> } }).ImageCapture;
 
@@ -435,7 +439,23 @@ export default function JoinLobbyPage() {
       if (rafId !== null) window.cancelAnimationFrame(rafId);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
-  }, [camOn, selectedCam]);
+  }, [camOn, selectedCam, previewStream]);
+
+  // Fallback preview path for browsers without ImageCapture support.
+  useEffect(() => {
+    const video = previewVideoRef.current;
+    if (!video) return;
+
+    const useVideoPreview = camOn && !camError && !canRenderPreview && !!previewStream;
+    video.srcObject = useVideoPreview ? previewStream : null;
+    if (useVideoPreview) {
+      void video.play().catch(() => undefined);
+    }
+
+    return () => {
+      video.srcObject = null;
+    };
+  }, [camOn, camError, canRenderPreview, previewStream]);
 
   const initials = name.trim()
     ? name.trim().split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -564,6 +584,13 @@ export default function JoinLobbyPage() {
           <canvas
             ref={previewCanvasRef}
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: camOn && !camError && canRenderPreview ? 'block' : 'none' }}
+          />
+          <video
+            ref={previewVideoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: camOn && !camError && !canRenderPreview ? 'block' : 'none' }}
           />
           {/* Avatar fallback */}
           {(!camOn || camError || !canRenderPreview) && (

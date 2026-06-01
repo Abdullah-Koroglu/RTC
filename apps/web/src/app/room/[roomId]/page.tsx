@@ -173,8 +173,8 @@ function WaitingRoom({ roomId, isMobile = false }: { roomId: string; isMobile?: 
 /* ── Screen share view ── */
 function ScreenShareView({ screenStream, localStream, remoteEntries, displayName, isAudioEnabled, isVideoEnabled, participants, isMobile, localPhoto }: { screenStream: MediaStream; localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
   const resolve = (key: string) => participants.get(key)?.displayName ?? key;
-  const stripTiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean; cameraEnabled?: boolean; photo?: string | null }> = [
-    ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, photo: localPhoto ?? null }] : []),
+  const stripTiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored: boolean; isMicMuted?: boolean; cameraEnabled?: boolean; lowLatency?: boolean; photo?: string | null }> = [
+    ...(localStream ? [{ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, lowLatency: true, photo: localPhoto ?? null }] : []),
     ...remoteEntries.filter(([k]) => !k.endsWith(':screen')).map(([key, stream]) => {
       const pState = participants.get(key);
       return { key, stream, label: resolve(key), muted: false, mirrored: false, ...(pState ? { isMicMuted: !pState.micEnabled, cameraEnabled: pState.cameraEnabled, photo: pState.photo ?? null } : {}) };
@@ -225,8 +225,8 @@ function ScreenShareView({ screenStream, localStream, remoteEntries, displayName
 /* ── Video grid ── */
 function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAudioEnabled, isVideoEnabled, participants, isMobile, localPhoto }: { localStream: MediaStream | null; remoteEntries: [string, MediaStream][]; screenStream: MediaStream | null; displayName: string; isAudioEnabled: boolean; isVideoEnabled: boolean; participants: Map<string, import('@/hooks/useRoom').ParticipantState>; isMobile: boolean; localPhoto?: string | null | undefined }) {
   const resolve = (key: string) => participants.get(key)?.displayName ?? key;
-  const tiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored?: boolean; isMicMuted?: boolean; cameraEnabled?: boolean; photo?: string | null }> = [];
-  if (localStream) tiles.push({ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, photo: localPhoto ?? null });
+  const tiles: Array<{ key: string; stream: MediaStream; label: string; muted: boolean; mirrored?: boolean; isMicMuted?: boolean; cameraEnabled?: boolean; lowLatency?: boolean; photo?: string | null }> = [];
+  if (localStream) tiles.push({ key: '__local', stream: localStream, label: `${displayName} (You)`, muted: true, mirrored: true, isMicMuted: !isAudioEnabled, cameraEnabled: isVideoEnabled, lowLatency: true, photo: localPhoto ?? null });
   if (screenStream) tiles.push({ key: '__screen', stream: screenStream, label: `${displayName} (Screen)`, muted: true });
   for (const [key, stream] of remoteEntries) {
     const isScreen = key.endsWith(':screen');
@@ -251,14 +251,14 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
       // Mobile: fill entire available area (no aspect-ratio constraint)
       return (
         <div style={{ flex: 1, padding: 8, minHeight: 0 }}>
-          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} cameraEnabled={tiles[0]!.cameraEnabled} photo={tiles[0]!.photo} />
+          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} cameraEnabled={tiles[0]!.cameraEnabled} lowLatency={tiles[0]!.lowLatency} photo={tiles[0]!.photo} />
         </div>
       );
     }
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
         <div style={{ width: '100%', maxWidth: 820, aspectRatio: '16/9' }}>
-          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} cameraEnabled={tiles[0]!.cameraEnabled} photo={tiles[0]!.photo} />
+          <VideoTile stream={tiles[0]!.stream} label={tiles[0]!.label} muted={tiles[0]!.muted} mirrored={tiles[0]!.mirrored} isMicMuted={tiles[0]!.isMicMuted} cameraEnabled={tiles[0]!.cameraEnabled} lowLatency={tiles[0]!.lowLatency} photo={tiles[0]!.photo} />
         </div>
       </div>
     );
@@ -267,7 +267,7 @@ function VideoGrid({ localStream, remoteEntries, screenStream, displayName, isAu
   return (
     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gridTemplateRows: `repeat(${rows},1fr)`, gap: isMobile ? 6 : 10, padding: isMobile ? 8 : 12, minHeight: 0 }}>
       {tiles.map((t) => (
-        <VideoTile key={t.key} stream={t.stream} label={t.label} muted={t.muted} mirrored={t.mirrored} isMicMuted={t.isMicMuted} cameraEnabled={t.cameraEnabled} photo={t.photo} />
+        <VideoTile key={t.key} stream={t.stream} label={t.label} muted={t.muted} mirrored={t.mirrored} isMicMuted={t.isMicMuted} cameraEnabled={t.cameraEnabled} lowLatency={t.lowLatency} photo={t.photo} />
       ))}
     </div>
   );
@@ -855,10 +855,10 @@ export default function RoomPage() {
     };
     const videoConstraints = {
       // min değerler: çok kötü ağda 360p, 240p'ye kadar düşebilir
-      width:  { min: 320, ideal: 1280, max: 1920 },
-      height: { min: 240, ideal: 720,  max: 1080 },
+      width:  { min: 320, ideal: 960, max: 1280 },
+      height: { min: 240, ideal: 540,  max: 720 },
       // 5fps minimum: FPS önce bu seviyeye düşer, sonra çözünürlük de düşmeye başlar
-      frameRate: { min: 5, ideal: 24, max: 30 },
+      frameRate: { min: 5, ideal: 20, max: 24 },
     };
     const constraints: MediaStreamConstraints = {
       video: videoDeviceId
@@ -1072,7 +1072,7 @@ export default function RoomPage() {
             <WaitingRoom roomId={roomId} isMobile={isMobile} />
             {/* PiP self preview */}
             <div style={{ position: 'absolute', bottom: 16, right: 16, width: isMobile ? 130 : 200, aspectRatio: '16/9', borderRadius: 10, overflow: 'hidden', border: '2px solid rgba(59,130,246,0.5)', boxShadow: '0 0 0 3px rgba(59,130,246,0.2)' }}>
-              <VideoTile stream={displayLocalStream} label={`${displayName} (You)`} muted mirrored isMicMuted={!isAudioEnabled} photo={userPhoto} />
+              <VideoTile stream={displayLocalStream} label={`${displayName} (You)`} muted mirrored isMicMuted={!isAudioEnabled} lowLatency photo={userPhoto} />
             </div>
           </div>
         )}
