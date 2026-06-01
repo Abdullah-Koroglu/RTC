@@ -681,8 +681,8 @@ export class SignalingClient {
       return;
     }
 
-    // If a fresh socket is already connected/connecting, skip scheduling.
-    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+    // Connected sockets never need a reconnect timer.
+    if (this.isConnected()) {
       return;
     }
 
