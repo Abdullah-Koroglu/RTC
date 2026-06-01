@@ -31,6 +31,7 @@ export interface UseRoomOptions {
 export interface UseRoomReturn {
   roomState: RoomState;
   error: Error | null;
+  isRecoveringMedia: boolean;
   localStream: MediaStream | null;
   remoteStreams: Map<string, MediaStream>;
   chatMessages: ChatMessage[];
@@ -86,6 +87,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
   const [roomState, setRoomState] = useState<RoomState>('idle');
   const [error, setError] = useState<Error | null>(null);
+  const [isRecoveringMedia, setIsRecoveringMedia] = useState(false);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -570,6 +572,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     const unsub = signalingClient.on('reconnect.succeeded', () => {
       void (async () => {
         try {
+          setIsRecoveringMedia(true);
           setError(null);
 
           const roomPassword = typeof window !== 'undefined' ? (sessionStorage.getItem('rtc:roomPassword') ?? undefined) : undefined;
@@ -660,6 +663,10 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           }
         } catch (err) {
           if (!cancelled) setError(err instanceof Error ? err : new Error('Failed to recover room after reconnect'));
+        } finally {
+          if (!cancelled) {
+            setIsRecoveringMedia(false);
+          }
         }
       })();
     });
@@ -977,6 +984,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   return {
     roomState,
     error,
+    isRecoveringMedia,
     localStream,
     remoteStreams,
     chatMessages,

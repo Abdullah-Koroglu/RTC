@@ -749,6 +749,7 @@ export default function RoomPage() {
 
   const {
     roomState,
+    isRecoveringMedia,
     localStream,
     remoteStreams,
     chatMessages,
@@ -836,7 +837,7 @@ export default function RoomPage() {
 
   // Auto-publish on join using stored device prefs
   useEffect(() => {
-    if (roomState !== 'joined' || hasPublished) return;
+    if (roomState !== 'joined' || hasPublished || isRecoveringMedia) return;
     const videoDeviceId = sessionStorage.getItem(SS_VIDEO_DEVICE);
     const audioDeviceId = sessionStorage.getItem(SS_AUDIO_DEVICE);
     const camOn = sessionStorage.getItem(SS_CAM_ON) !== '0';
@@ -916,7 +917,22 @@ export default function RoomPage() {
     }).catch(() => {
       // Ignore; publishMedia already reports internal errors.
     });
-  }, [roomState, hasPublished, publishMedia, setAudioEnabled, setVideoEnabled]);
+  }, [roomState, hasPublished, isRecoveringMedia, publishMedia, setAudioEnabled, setVideoEnabled]);
+
+  // If recovery or publish flow leaves us joined but without a local stream,
+  // clear the guard so auto-publish can run again on the next render tick.
+  useEffect(() => {
+    if (roomState !== 'joined') return;
+    if (!hasPublished) return;
+    if (isRecoveringMedia) return;
+    if (localStream) return;
+
+    const retryTimer = setTimeout(() => {
+      setHasPublished(false);
+    }, 600);
+
+    return () => clearTimeout(retryTimer);
+  }, [roomState, hasPublished, isRecoveringMedia, localStream]);
 
   // Toast on remote peer join/leave
   const addToast = (message: string, ini: string, color: string) => {
