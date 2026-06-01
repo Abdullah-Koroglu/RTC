@@ -52,6 +52,12 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       const unsubs: (() => void)[] = [];
 
       unsubs.push(
+        newClient.on('signaling.connected', () => {
+          setIsConnected(true);
+        }),
+      );
+
+      unsubs.push(
         newClient.on('signaling.disconnected', () => {
           setIsConnected(false);
         }),

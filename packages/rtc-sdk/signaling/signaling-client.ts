@@ -198,7 +198,46 @@ export class SignalingClient {
   on = this.emitter.on.bind(this.emitter);
 
   async connect(): Promise<void> {
-    if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
+    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      return;
+    }
+
+    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
+      await new Promise<void>((resolve, reject) => {
+        const socket = this.socket;
+        if (!socket) {
+          reject(new Error('WebSocket not available while connecting'));
+          return;
+        }
+
+        const onOpen = () => {
+          cleanup();
+          this.clearReconnectTimer();
+          this.reconnectAttempt = 0;
+          resolve();
+        };
+
+        const onErrorOrClose = () => {
+          cleanup();
+          reject(new Error('WebSocket failed while connecting'));
+        };
+
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new Error('WebSocket connect timeout'));
+        }, 8000);
+
+        const cleanup = () => {
+          clearTimeout(timeoutId);
+          socket.removeEventListener('open', onOpen);
+          socket.removeEventListener('error', onErrorOrClose as EventListener);
+          socket.removeEventListener('close', onErrorOrClose as EventListener);
+        };
+
+        socket.addEventListener('open', onOpen);
+        socket.addEventListener('error', onErrorOrClose as EventListener);
+        socket.addEventListener('close', onErrorOrClose as EventListener);
+      });
       return;
     }
 
@@ -711,9 +750,7 @@ export class SignalingClient {
 
       try {
         await this.connect();
-        if (this.isConnected()) {
-          this.emitter.emit('reconnect.succeeded', { attempt: this.reconnectAttempt });
-        }
+        this.emitter.emit('reconnect.succeeded', { attempt: this.reconnectAttempt });
       } catch (error) {
         const err = error instanceof Error ? error : new Error('Reconnection failed');
         this.scheduleReconnect();
