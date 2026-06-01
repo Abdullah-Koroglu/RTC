@@ -295,13 +295,12 @@ export class WebSocketGateway {
         });
       }
 
-      const participants = await this.rooms.getParticipants(event.roomId);
-      const hostPeerId = this.rooms.getHost(event.roomId);
+      const snapshot = await this.rooms.getSnapshot(event.roomId);
       this.send(conn.socket, {
         type: 'ack',
         requestId: event.requestId,
         ok: true,
-        data: { participants, ...(hostPeerId !== undefined ? { hostPeerId } : {}) },
+        data: snapshot,
       } as Parameters<typeof this.send>[1]);
       return;
     }
@@ -489,7 +488,17 @@ export class WebSocketGateway {
       const patch = event.kind === 'audio' ? { micEnabled: false }
         : event.kind === 'video' ? { cameraEnabled: false }
         : { micEnabled: false, cameraEnabled: false };
-      await this.rooms.updateState(event.roomId, event.peerId, patch);
+      const updated = await this.rooms.updateState(event.roomId, event.peerId, patch);
+      if (updated) {
+        await this.dispatcher.publishRoomEvent(event.roomId, {
+          type: 'room.participant-state-updated',
+          roomId: event.roomId,
+          participantId: event.peerId,
+          displayName: updated.displayName,
+          cameraEnabled: updated.cameraEnabled,
+          micEnabled: updated.micEnabled,
+        });
+      }
       this.send(conn.socket, { type: 'ack', requestId: event.requestId, ok: true } as Parameters<typeof this.send>[1]);
       return;
     }

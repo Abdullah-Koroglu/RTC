@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MediasoupClient, type ParticipantState } from '@repo/rtc-sdk';
+import { MediasoupClient, type RoomParticipantState, type RoomSnapshot } from '@repo/rtc-sdk';
 import { useSignaling } from './useSignaling';
 import { getClientEnv } from '@/lib/env';
 
 export type RoomState = 'idle' | 'joining' | 'joined' | 'error' | 'banned' | 'room_locked';
 
-export type { ParticipantState };
+export type ParticipantViewModel = RoomParticipantState;
+export type ParticipantState = ParticipantViewModel;
 
 export interface ChatMessage {
   id: string;
@@ -35,8 +36,8 @@ export interface UseRoomReturn {
   chatMessages: ChatMessage[];
   screenStream: MediaStream | null;
   isScreenSharing: boolean;
-  /** participantId → ParticipantState (includes displayName, cameraEnabled, micEnabled) */
-  participants: Map<string, ParticipantState>;
+  /** participantId -> ParticipantViewModel (roster state plus client-side profile fields) */
+  participants: Map<string, ParticipantViewModel>;
   hostPeerId: string | null;
   isHost: boolean;
   isRoomLocked: boolean;
@@ -90,7 +91,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [participants, setParticipants] = useState<Map<string, ParticipantState>>(new Map());
+  const [participants, setParticipants] = useState<Map<string, ParticipantViewModel>>(new Map());
   const pendingPhotosRef = useRef<Map<string, string | null>>(new Map());
   const [hostPeerId, setHostPeerId] = useState<string | null>(null);
   const [isRoomLocked, setIsRoomLocked] = useState(false);
@@ -134,6 +135,25 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
   const { client: signalingClient, isConnected: isSignalingConnected } = useSignaling(signalingOptions);
 
+  const applyRoomSnapshot = useCallback((snapshot: RoomSnapshot) => {
+    const initialMap = new Map(snapshot.participants.map((p) => [p.participantId, p]));
+    for (const [pid, queuedPhoto] of pendingPhotosRef.current) {
+      const participant = initialMap.get(pid);
+      if (participant) {
+        initialMap.set(pid, { ...participant, photo: queuedPhoto });
+        pendingPhotosRef.current.delete(pid);
+      }
+    }
+
+    setParticipants(initialMap);
+    setHostPeerId(snapshot.hostPeerId ?? null);
+    setIsRoomLocked(snapshot.locked);
+    setRaisedHands(snapshot.raisedHands.map((raisedId) => ({
+      peerId: raisedId,
+      displayName: initialMap.get(raisedId)?.displayName ?? raisedId,
+    })));
+  }, []);
+
   const initializeMediasoup = useCallback(async () => {
     if (mediaClientRef.current) return;
 
@@ -160,7 +180,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
       await initializeMediasoup();
       const roomPassword = typeof window !== 'undefined' ? (sessionStorage.getItem('rtc:roomPassword') ?? undefined) : undefined;
-      const { participants: initialParticipants, hostPeerId: initialHostPeerId } = await signalingClient.joinRoom(
+      const snapshot = await signalingClient.joinRoom(
         roomId,
         displayName ?? peerId,
         {
@@ -169,14 +189,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         },
         roomPassword,
       );
-      const initialMap = new Map(initialParticipants.map((p) => [p.participantId, p]));
-      // Apply any pending photos that arrived before participants map was populated
-      for (const [pid, photo] of pendingPhotosRef.current) {
-        const p = initialMap.get(pid);
-        if (p) { initialMap.set(pid, { ...p, photo }); pendingPhotosRef.current.delete(pid); }
-      }
-      setParticipants(initialMap);
-      if (initialHostPeerId) setHostPeerId(initialHostPeerId);
+      applyRoomSnapshot(snapshot);
       setRoomState('joined');
     } catch (err) {
       const joinError = err instanceof Error ? err : new Error('Failed to join room');
@@ -191,7 +204,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
       throw joinError;
     }
-  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId, initialMicEnabled, initialCameraEnabled]);
+  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId, initialMicEnabled, initialCameraEnabled, applyRoomSnapshot]);
 
   const leaveRoom = useCallback(async () => {
     try {
@@ -446,11 +459,11 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       const freshMap = new Map(fresh.map((p) => [p.participantId, p]));
 
       setParticipants((prev) => {
-        const next = new Map<string, ParticipantState>();
+        const next = new Map<string, ParticipantViewModel>();
         for (const [id, p] of freshMap) {
           if (id === peerId) continue;
           const existing = prev.get(id);
-          const entry: ParticipantState = { ...p };
+          const entry: ParticipantViewModel = { ...p };
           // Preserve client-side photo: from existing state, or from pending if freshly joined
           if (existing?.photo !== undefined) {
             entry.photo = existing.photo;
@@ -513,7 +526,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           setError(null);
 
           const roomPassword = typeof window !== 'undefined' ? (sessionStorage.getItem('rtc:roomPassword') ?? undefined) : undefined;
-          const { participants: freshParticipants, hostPeerId: freshHostPeerId } = await signalingClient.joinRoom(
+          const snapshot = await signalingClient.joinRoom(
             roomId,
             displayName ?? peerId,
             {
@@ -524,16 +537,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           );
           if (cancelled) return;
 
-          const freshMap = new Map(freshParticipants.map((p) => [p.participantId, p]));
-          for (const [pid, queuedPhoto] of pendingPhotosRef.current) {
-            const p = freshMap.get(pid);
-            if (p) {
-              freshMap.set(pid, { ...p, photo: queuedPhoto });
-              pendingPhotosRef.current.delete(pid);
-            }
-          }
-          setParticipants(freshMap);
-          if (freshHostPeerId) setHostPeerId(freshHostPeerId);
+          applyRoomSnapshot(snapshot);
 
           remoteStreamsRef.current.forEach((stream) => {
             stream.getTracks().forEach((track) => track.stop());
@@ -601,7 +605,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
             if (cancelled) return;
 
             const hasRemoteStreams = remoteStreamsRef.current.size > 0;
-            const hasKnownRemoteParticipants = Array.from(freshMap.keys()).some((id) => id !== peerId);
+            const hasKnownRemoteParticipants = snapshot.participants.some((p) => p.participantId !== peerId);
             if (hasRemoteStreams || !hasKnownRemoteParticipants) {
               break;
             }
@@ -631,6 +635,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     publishMedia,
     setAudioEnabled,
     setVideoEnabled,
+    applyRoomSnapshot,
     reconcile,
     syncRemoteProducers,
   ]);
@@ -665,7 +670,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           setParticipants((prev) => {
             const next = new Map(prev);
             const existing = next.get(remotePeerId);
-            const updated: ParticipantState = {
+            const updated: ParticipantViewModel = {
               participantId: remotePeerId,
               displayName: remoteDisplayName,
               cameraEnabled,
@@ -870,48 +875,43 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     }
   }, [autoJoin, isSignalingConnected, roomState, joinRoom]);
 
-  const sendRaw = useCallback((msg: Record<string, unknown>) => {
-    const ws = (signalingClient as unknown as { socket: WebSocket | null } | null)?.socket;
-    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
-  }, [signalingClient]);
-
   const kickParticipant = useCallback((targetPeerId: string) => {
-    sendRaw({ type: 'room.kick', roomId, peerId: targetPeerId });
-  }, [sendRaw, roomId]);
+    void signalingClient?.kickParticipant(roomId, targetPeerId).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const lockRoom = useCallback((locked: boolean) => {
-    sendRaw({ type: 'room.lock', roomId, locked });
-  }, [sendRaw, roomId]);
+    void signalingClient?.lockRoom(roomId, locked).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const approveJoin = useCallback((targetPeerId: string) => {
     setJoinRequests((prev) => prev.filter((r) => r.peerId !== targetPeerId));
-    sendRaw({ type: 'room.approve-join', roomId, peerId: targetPeerId });
-  }, [sendRaw, roomId]);
+    void signalingClient?.approveJoin(roomId, targetPeerId).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const denyJoin = useCallback((targetPeerId: string) => {
     setJoinRequests((prev) => prev.filter((r) => r.peerId !== targetPeerId));
-    sendRaw({ type: 'room.deny-join', roomId, peerId: targetPeerId });
-  }, [sendRaw, roomId]);
+    void signalingClient?.denyJoin(roomId, targetPeerId).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const transferHost = useCallback((targetPeerId: string) => {
-    sendRaw({ type: 'room.transfer-host', roomId, peerId: targetPeerId });
-  }, [sendRaw, roomId]);
+    void signalingClient?.transferHost(roomId, targetPeerId).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const forceMute = useCallback((targetPeerId: string, kind: 'audio' | 'video' | 'both') => {
-    sendRaw({ type: 'room.force-mute', roomId, peerId: targetPeerId, kind });
-  }, [sendRaw, roomId]);
+    void signalingClient?.forceMute(roomId, targetPeerId, kind).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const requestUnmute = useCallback((targetPeerId: string, kind: 'audio' | 'video' | 'both') => {
-    sendRaw({ type: 'room.request-unmute', roomId, peerId: targetPeerId, kind });
-  }, [sendRaw, roomId]);
+    void signalingClient?.requestUnmute(roomId, targetPeerId, kind).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const raiseHand = useCallback(() => {
-    sendRaw({ type: 'room.raise-hand', roomId });
-  }, [sendRaw, roomId]);
+    void signalingClient?.raiseHand(roomId).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const lowerHand = useCallback((targetPeerId?: string) => {
-    sendRaw({ type: 'room.lower-hand', roomId, ...(targetPeerId ? { peerId: targetPeerId } : {}) });
-  }, [sendRaw, roomId]);
+    void signalingClient?.lowerHand(roomId, targetPeerId).catch(() => undefined);
+  }, [signalingClient, roomId]);
 
   const dismissUnmuteRequest = useCallback(() => {
     setUnmuteRequest(null);
@@ -922,8 +922,8 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   }, []);
 
   const requestBannedJoin = useCallback(() => {
-    sendRaw({ type: 'room.request-join', roomId, displayName: displayName ?? peerId });
-  }, [sendRaw, roomId, displayName, peerId]);
+    void signalingClient?.requestJoin(roomId, displayName ?? peerId).catch(() => undefined);
+  }, [signalingClient, roomId, displayName, peerId]);
 
   return {
     roomState,

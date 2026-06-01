@@ -1,6 +1,7 @@
 import { AppState, Platform, type AppStateStatus } from 'react-native';
 import { getEnv } from './env';
 import type { MediaStream as RNMediaStream } from 'react-native-webrtc';
+import type { RoomParticipantState } from '@repo/rtc-sdk/signaling-client';
 
 let mediaDevices: any;
 let registerGlobals: () => void = () => undefined;
@@ -43,14 +44,7 @@ export interface RemoteProducer {
   appData?: Record<string, unknown>;
 }
 
-export interface ParticipantState {
-  participantId: string;
-  displayName: string;
-  cameraEnabled: boolean;
-  micEnabled: boolean;
-  joinedAt: string;
-  photo?: string | null;
-}
+export type ParticipantState = RoomParticipantState;
 
 export class MediasoupRNClient {
   private device: any = null;

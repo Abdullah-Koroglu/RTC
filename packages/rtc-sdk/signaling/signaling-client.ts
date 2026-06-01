@@ -2,7 +2,7 @@ import { TypedEventEmitter } from '../events/event-emitter';
 
 export type SignalKind = 'offer' | 'answer' | 'ice-candidate' | 'chat' | 'name-announce' | 'photo-announce';
 
-export interface ParticipantState {
+export interface RoomParticipantState {
   participantId: string;
   displayName: string;
   cameraEnabled: boolean;
@@ -10,6 +10,18 @@ export interface ParticipantState {
   joinedAt: string;
   photo?: string | null;
 }
+
+export type ParticipantState = RoomParticipantState;
+
+export interface RoomSnapshot {
+  participants: RoomParticipantState[];
+  hostPeerId?: string;
+  locked: boolean;
+  raisedHands: string[];
+}
+
+type ModerationKind = 'audio' | 'video' | 'both';
+type WithoutRequestId<T> = T extends unknown ? Omit<T, 'requestId'> : never;
 
 // Inbound event types from signaling server
 export type InboundSignalingEvent =
@@ -90,7 +102,17 @@ export type OutboundSignalingEvent =
       micEnabled?: boolean;
       displayName?: string;
       requestId?: string;
-    };
+    }
+  | { type: 'room.request-join'; roomId: string; displayName?: string; requestId?: string }
+  | { type: 'room.approve-join'; roomId: string; peerId: string; requestId?: string }
+  | { type: 'room.deny-join'; roomId: string; peerId: string; requestId?: string }
+  | { type: 'room.kick'; roomId: string; peerId: string; requestId?: string }
+  | { type: 'room.lock'; roomId: string; locked: boolean; requestId?: string }
+  | { type: 'room.transfer-host'; roomId: string; peerId: string; requestId?: string }
+  | { type: 'room.force-mute'; roomId: string; peerId: string; kind: ModerationKind; requestId?: string }
+  | { type: 'room.request-unmute'; roomId: string; peerId: string; kind: ModerationKind; requestId?: string }
+  | { type: 'room.raise-hand'; roomId: string; requestId?: string }
+  | { type: 'room.lower-hand'; roomId: string; peerId?: string; requestId?: string };
 
 export interface ChatMessagePayload {
   text: string;
@@ -246,7 +268,7 @@ export class SignalingClient {
     displayName?: string,
     initialState?: { micEnabled?: boolean; cameraEnabled?: boolean },
     password?: string,
-  ): Promise<{ participants: ParticipantState[]; hostPeerId?: string }> {
+  ): Promise<RoomSnapshot> {
     const requestId = this.generateRequestId();
     const message: OutboundSignalingEvent = {
       type: 'room.join',
@@ -268,10 +290,12 @@ export class SignalingClient {
       this.pendingRequests.set(requestId, {
         resolve: (data: unknown) => {
           this.emitter.emit('room.joined', { roomId });
-          const ackData = data as { participants?: ParticipantState[]; hostPeerId?: string } | undefined;
+          const ackData = data as Partial<RoomSnapshot> | undefined;
           resolve({
             participants: ackData?.participants ?? [],
             ...(ackData?.hostPeerId !== undefined ? { hostPeerId: ackData.hostPeerId } : {}),
+            locked: ackData?.locked ?? false,
+            raisedHands: ackData?.raisedHands ?? [],
           });
         },
         reject,
@@ -331,6 +355,46 @@ export class SignalingClient {
         timeout,
       });
     });
+  }
+
+  async requestJoin(roomId: string, displayName?: string): Promise<void> {
+    await this.sendAcked({ type: 'room.request-join', roomId, ...(displayName !== undefined ? { displayName } : {}) });
+  }
+
+  async approveJoin(roomId: string, peerId: string): Promise<void> {
+    await this.sendAcked({ type: 'room.approve-join', roomId, peerId });
+  }
+
+  async denyJoin(roomId: string, peerId: string): Promise<void> {
+    await this.sendAcked({ type: 'room.deny-join', roomId, peerId });
+  }
+
+  async kickParticipant(roomId: string, peerId: string): Promise<void> {
+    await this.sendAcked({ type: 'room.kick', roomId, peerId });
+  }
+
+  async lockRoom(roomId: string, locked: boolean): Promise<void> {
+    await this.sendAcked({ type: 'room.lock', roomId, locked });
+  }
+
+  async transferHost(roomId: string, peerId: string): Promise<void> {
+    await this.sendAcked({ type: 'room.transfer-host', roomId, peerId });
+  }
+
+  async forceMute(roomId: string, peerId: string, kind: ModerationKind): Promise<void> {
+    await this.sendAcked({ type: 'room.force-mute', roomId, peerId, kind });
+  }
+
+  async requestUnmute(roomId: string, peerId: string, kind: ModerationKind): Promise<void> {
+    await this.sendAcked({ type: 'room.request-unmute', roomId, peerId, kind });
+  }
+
+  async raiseHand(roomId: string): Promise<void> {
+    await this.sendAcked({ type: 'room.raise-hand', roomId });
+  }
+
+  async lowerHand(roomId: string, peerId?: string): Promise<void> {
+    await this.sendAcked({ type: 'room.lower-hand', roomId, ...(peerId !== undefined ? { peerId } : {}) });
   }
 
   async relaySignal(
@@ -452,6 +516,27 @@ export class SignalingClient {
     }
 
     this.socket.send(JSON.stringify(message));
+  }
+
+  private async sendAcked(message: WithoutRequestId<OutboundSignalingEvent>, timeoutMs = 5000): Promise<void> {
+    const requestId = this.generateRequestId();
+    await this.sendMessage({ ...message, requestId } as OutboundSignalingEvent);
+
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        reject(new Error(`Signaling request timed out: ${message.type}`));
+      }, timeoutMs);
+
+      this.pendingRequests.set(requestId, {
+        resolve: () => {
+          clearTimeout(timeout);
+          resolve();
+        },
+        reject,
+        timeout,
+      });
+    });
   }
 
   private handleMessage(data: string): void {

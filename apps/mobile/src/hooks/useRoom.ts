@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { MediaStream } from 'react-native-webrtc';
-import { MediasoupRNClient, type ParticipantState, type RemoteProducer } from '@/lib/mediasoup-rn';
+import type { RoomParticipantState, RoomSnapshot } from '@repo/rtc-sdk/signaling-client';
+import { MediasoupRNClient, type RemoteProducer } from '@/lib/mediasoup-rn';
 import { useSignaling } from './useSignaling';
 import { getEnv } from '@/lib/env';
 
 export type RoomState = 'idle' | 'joining' | 'joined' | 'error';
-export type { ParticipantState };
+export type ParticipantViewModel = RoomParticipantState;
+export type ParticipantState = ParticipantViewModel;
 
 export interface ChatMessage {
   id: string;
@@ -31,7 +33,7 @@ export interface UseRoomReturn {
   localStream: MediaStream | null;
   remoteStreams: Map<string, MediaStream>;
   chatMessages: ChatMessage[];
-  participants: Map<string, ParticipantState>;
+  participants: Map<string, ParticipantViewModel>;
   isScreenSharing: boolean;
   leaveRoom: () => Promise<void>;
   publishMedia: (constraints?: Record<string, unknown>) => Promise<MediaStream | null>;
@@ -52,7 +54,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [participants, setParticipants] = useState<Map<string, ParticipantState>>(new Map());
+  const [participants, setParticipants] = useState<Map<string, ParticipantViewModel>>(new Map());
 
   const mediaClientRef = useRef<MediasoupRNClient | null>(null);
   const producerOwnerRef = useRef<Map<string, string>>(new Map());
@@ -67,6 +69,20 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     autoConnect: true,
     reconnect: { maxAttempts: Number.MAX_SAFE_INTEGER, baseDelayMs: 1000, maxDelayMs: 10000 },
   });
+
+  const applyRoomSnapshot = useCallback((snapshot: RoomSnapshot) => {
+    setParticipants((prev) => {
+      const next = new Map<string, ParticipantViewModel>();
+      for (const participant of snapshot.participants) {
+        const existing = prev.get(participant.participantId);
+        next.set(participant.participantId, {
+          ...participant,
+          ...(existing?.photo !== undefined ? { photo: existing.photo } : {}),
+        });
+      }
+      return next;
+    });
+  }, []);
 
   const initializeMediasoup = useCallback(async () => {
     if (mediaClientRef.current) return;
@@ -93,11 +109,11 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       }
 
       await initializeMediasoup();
-      const initialParticipants: ParticipantState[] = await signalingClient.joinRoom(roomId, displayName ?? peerId, {
+      const snapshot = await signalingClient.joinRoom(roomId, displayName ?? peerId, {
         ...(initialMicEnabled !== undefined ? { micEnabled: initialMicEnabled } : {}),
         ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
       });
-      setParticipants(new Map(initialParticipants.map((p) => [p.participantId, p])));
+      applyRoomSnapshot(snapshot);
       setRoomState('joined');
     } catch (err) {
       const e = err instanceof Error ? err : new Error('Failed to join room');
@@ -105,7 +121,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
       setRoomState('error');
       throw e;
     }
-  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId, initialMicEnabled, initialCameraEnabled]);
+  }, [isSignalingConnected, initializeMediasoup, signalingClient, roomId, displayName, peerId, initialMicEnabled, initialCameraEnabled, applyRoomSnapshot]);
 
   const leaveRoom = useCallback(async () => {
     try {
@@ -266,15 +282,15 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     try {
       const res = await fetch(`${env.SIGNALING_URL}/rooms/${roomId}/participants`);
       if (!res.ok) return;
-      const { participants: fresh } = await res.json() as { participants: ParticipantState[] };
+      const { participants: fresh } = await res.json() as { participants: ParticipantViewModel[] };
       const freshMap = new Map(fresh.map((p) => [p.participantId, p]));
 
       setParticipants((prev) => {
-        const next = new Map<string, ParticipantState>();
+        const next = new Map<string, ParticipantViewModel>();
         for (const [id, p] of freshMap) {
           if (id === peerId) continue;
           const existing = prev.get(id);
-          const entry: ParticipantState = { ...p };
+          const entry: ParticipantViewModel = { ...p };
           if (existing?.photo !== undefined) entry.photo = existing.photo;
           next.set(id, entry);
         }
@@ -283,7 +299,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
       setRemoteStreams((prev) => {
         const ghostKeys = [...prev.keys()].filter((key) => {
-          const basePeer = key.split(':')[0]!;
+          const basePeer = key.split(':')[0] ?? '';
           return basePeer !== peerId && !freshMap.has(basePeer);
         });
         if (ghostKeys.length === 0) return prev;
@@ -320,7 +336,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
           setParticipants((prev) => {
             const next = new Map(prev);
             const existing = next.get(remotePeerId);
-            const updated: ParticipantState = {
+            const updated: ParticipantViewModel = {
               participantId: remotePeerId,
               displayName: remoteDisplayName,
               cameraEnabled,
@@ -383,15 +399,12 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     const unsub = signalingClient.on('reconnect.succeeded', () => {
       void (async () => {
         try {
-          const joined = await signalingClient.joinRoom(roomId, displayName ?? peerId, {
+          const snapshot = await signalingClient.joinRoom(roomId, displayName ?? peerId, {
             ...(initialMicEnabled !== undefined ? { micEnabled: initialMicEnabled } : {}),
             ...(initialCameraEnabled !== undefined ? { cameraEnabled: initialCameraEnabled } : {}),
           });
 
-          const freshParticipants = Array.isArray(joined)
-            ? joined
-            : ((joined as { participants?: ParticipantState[] }).participants ?? []);
-          setParticipants(new Map(freshParticipants.map((p) => [p.participantId, p])));
+          applyRoomSnapshot(snapshot);
 
           remoteStreamsRef.current.forEach((stream) => {
             stream.getTracks().forEach((track) => track.stop());
@@ -434,6 +447,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     localStream,
     initializeMediasoup,
     publishMedia,
+    applyRoomSnapshot,
     reconcile,
     syncRemoteProducers,
   ]);

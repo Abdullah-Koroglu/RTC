@@ -1,13 +1,20 @@
 import type Redis from 'ioredis';
 import { env } from '@/config/env';
 
-export interface ParticipantState {
+export interface RoomRosterParticipant {
   participantId: string;
   connectionId: string;
   displayName: string;
   cameraEnabled: boolean;
   micEnabled: boolean;
   joinedAt: string;
+}
+
+export interface RoomSnapshot {
+  participants: RoomRosterParticipant[];
+  hostPeerId?: string;
+  locked: boolean;
+  raisedHands: string[];
 }
 
 export class RoomManager {
@@ -19,7 +26,7 @@ export class RoomManager {
   // roomId → Set<connectionId> — for synchronous broadcast routing
   private readonly roomConnections = new Map<string, Set<string>>();
   // In-memory fallback when REDIS_ENABLED=false
-  private readonly localRooms = new Map<string, Map<string, ParticipantState>>();
+  private readonly localRooms = new Map<string, Map<string, RoomRosterParticipant>>();
   // roomId → participantId of current host
   private readonly roomHosts = new Map<string, string>();
   // roomId → locked state
@@ -61,11 +68,11 @@ export class RoomManager {
 
       if (raw) {
         // Reconnecting: preserve existing state, update connectionId and optionally displayName
-        const existing = JSON.parse(raw) as ParticipantState;
-        const updated: ParticipantState = { ...existing, connectionId, ...(displayName ? { displayName } : {}) };
+        const existing = JSON.parse(raw) as RoomRosterParticipant;
+        const updated: RoomRosterParticipant = { ...existing, connectionId, ...(displayName ? { displayName } : {}) };
         await this.redis.set(key, JSON.stringify(updated), 'EX', this.ttlSeconds);
       } else {
-        const state: ParticipantState = {
+        const state: RoomRosterParticipant = {
           participantId,
           connectionId,
           displayName: displayName ?? '',
@@ -98,7 +105,7 @@ export class RoomManager {
     }
   }
 
-  async leave(roomId: string, connectionId: string): Promise<ParticipantState | undefined> {
+  async leave(roomId: string, connectionId: string): Promise<RoomRosterParticipant | undefined> {
     const participantId = this.connectionRooms.get(connectionId)?.get(roomId);
     if (!participantId) return undefined;
 
@@ -115,7 +122,7 @@ export class RoomManager {
       await this.redis.del(key);
       await this.redis.srem(this.idsKey(roomId), participantId);
       return raw
-        ? (JSON.parse(raw) as ParticipantState)
+        ? (JSON.parse(raw) as RoomRosterParticipant)
         : { participantId, connectionId, displayName: '', cameraEnabled: false, micEnabled: false, joinedAt: '' };
     } else {
       const room = this.localRooms.get(roomId);
@@ -127,8 +134,8 @@ export class RoomManager {
     }
   }
 
-  async leaveAll(connectionId: string): Promise<Array<{ roomId: string; participant: ParticipantState }>> {
-    const left: Array<{ roomId: string; participant: ParticipantState }> = [];
+  async leaveAll(connectionId: string): Promise<Array<{ roomId: string; participant: RoomRosterParticipant }>> {
+    const left: Array<{ roomId: string; participant: RoomRosterParticipant }> = [];
     const rooms = this.connectionRooms.get(connectionId);
     if (!rooms) return left;
 
@@ -144,7 +151,7 @@ export class RoomManager {
         left.push({
           roomId,
           participant: raw
-            ? (JSON.parse(raw) as ParticipantState)
+            ? (JSON.parse(raw) as RoomRosterParticipant)
             : { participantId, connectionId, displayName: '', cameraEnabled: false, micEnabled: false, joinedAt: '' },
         });
       } else {
@@ -164,7 +171,7 @@ export class RoomManager {
     return left;
   }
 
-  async getParticipants(roomId: string): Promise<ParticipantState[]> {
+  async getParticipants(roomId: string): Promise<RoomRosterParticipant[]> {
     if (this.redis) {
       const ids = await this.redis.smembers(this.idsKey(roomId));
       if (ids.length === 0) return [];
@@ -172,13 +179,13 @@ export class RoomManager {
       const keys = ids.map((id) => this.participantKey(roomId, id));
       const values = await this.redis.mget(...keys);
 
-      const participants: ParticipantState[] = [];
+      const participants: RoomRosterParticipant[] = [];
       const expired: string[] = [];
 
       for (let i = 0; i < ids.length; i++) {
         const raw = values[i];
         if (raw) {
-          participants.push(JSON.parse(raw) as ParticipantState);
+          participants.push(JSON.parse(raw) as RoomRosterParticipant);
         } else {
           expired.push(ids[i]!);
         }
@@ -197,13 +204,13 @@ export class RoomManager {
   async updateState(
     roomId: string,
     participantId: string,
-    patch: Partial<Pick<ParticipantState, 'displayName' | 'cameraEnabled' | 'micEnabled'>>,
-  ): Promise<ParticipantState | undefined> {
+    patch: Partial<Pick<RoomRosterParticipant, 'displayName' | 'cameraEnabled' | 'micEnabled'>>,
+  ): Promise<RoomRosterParticipant | undefined> {
     if (this.redis) {
       const key = this.participantKey(roomId, participantId);
       const raw = await this.redis.get(key);
       if (!raw) return undefined;
-      const updated: ParticipantState = { ...(JSON.parse(raw) as ParticipantState), ...patch };
+      const updated: RoomRosterParticipant = { ...(JSON.parse(raw) as RoomRosterParticipant), ...patch };
       await this.redis.set(key, JSON.stringify(updated), 'EX', this.ttlSeconds);
       return updated;
     }
@@ -335,5 +342,19 @@ export class RoomManager {
 
   hasHandRaised(roomId: string, peerId: string): boolean {
     return this.raisedHands.get(roomId)?.has(peerId) ?? false;
+  }
+
+  getRaisedHands(roomId: string): string[] {
+    return Array.from(this.raisedHands.get(roomId) ?? []);
+  }
+
+  async getSnapshot(roomId: string): Promise<RoomSnapshot> {
+    const hostPeerId = this.getHost(roomId);
+    return {
+      participants: await this.getParticipants(roomId),
+      ...(hostPeerId !== undefined ? { hostPeerId } : {}),
+      locked: this.isLocked(roomId),
+      raisedHands: this.getRaisedHands(roomId),
+    };
   }
 }
