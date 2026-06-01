@@ -170,6 +170,11 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
     const liveProducerIds = new Set(producers.map((p) => p.producerId));
     const livePeerIds = new Set(producers.map((p) => p.peerId));
+    const liveScreenStreamKeys = new Set(
+      producers
+        .filter((p) => p.appData?.mediaTag === 'screen')
+        .map((p) => `${p.peerId}:screen`),
+    );
     const keysToRemove: string[] = [];
 
     for (const [screenProducerId, streamKey] of screenProducerKeysRef.current) {
@@ -179,6 +184,23 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
         subscribedProducerIdsRef.current.delete(screenProducerId);
         producerOwnerRef.current.delete(screenProducerId);
         screenProducerKeysRef.current.delete(screenProducerId);
+      }
+    }
+
+    // Extra safety: remove stale screen tiles even if producer->key mapping was lost.
+    for (const [streamKey, stream] of remoteStreamsRef.current) {
+      if (!streamKey.endsWith(':screen')) continue;
+      if (liveScreenStreamKeys.has(streamKey)) continue;
+
+      stream.getTracks().forEach((t) => t.stop());
+      keysToRemove.push(streamKey);
+
+      for (const [producerId, mappedKey] of screenProducerKeysRef.current) {
+        if (mappedKey === streamKey) {
+          screenProducerKeysRef.current.delete(producerId);
+          subscribedProducerIdsRef.current.delete(producerId);
+          producerOwnerRef.current.delete(producerId);
+        }
       }
     }
 
