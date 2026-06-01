@@ -16,6 +16,14 @@ async function getMediasoupClient(): Promise<any> {
   return import('mediasoup-client');
 }
 
+function createMediaSessionId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  return `media-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export interface MediasoupClientOptions {
   baseUrl: string;
   apiBaseUrl: string;
@@ -66,9 +74,10 @@ export class MediasoupClient {
   private screenProducer: Producer | null = null;
   private unloadHandlerRegistered = false;
   private turnCredentials: TurnCredentialsResponse | null = null;
+  private readonly mediaSessionId = createMediaSessionId();
 
   private readonly unloadHandler = (): void => {
-    const url = `${this.options.baseUrl}/rooms/${this.options.roomId}/peers/${this.options.peerId}`;
+    const url = `${this.options.baseUrl}/rooms/${this.options.roomId}/peers/${this.options.peerId}?sessionId=${encodeURIComponent(this.mediaSessionId)}`;
     void fetch(url, {
       method: 'DELETE',
       headers: {
@@ -92,7 +101,9 @@ export class MediasoupClient {
 
       this.device = new Device();
 
-      const joinResponse = await this.apiCall('POST', `/rooms/${this.options.roomId}/peers/${this.options.peerId}/join`, {});
+      const joinResponse = await this.apiCall('POST', `/rooms/${this.options.roomId}/peers/${this.options.peerId}/join`, {
+        sessionId: this.mediaSessionId,
+      });
 
       await this.device.load({
         routerRtpCapabilities: joinResponse.routerRtpCapabilities,
@@ -514,7 +525,7 @@ export class MediasoupClient {
 
     // Notify server of disconnection
     try {
-      await this.apiCall('DELETE', `/rooms/${this.options.roomId}/peers/${this.options.peerId}`, {});
+      await this.apiCall('DELETE', `/rooms/${this.options.roomId}/peers/${this.options.peerId}?sessionId=${encodeURIComponent(this.mediaSessionId)}`, {});
     } catch {
       // Ignore errors on disconnect
     }

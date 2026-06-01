@@ -40,7 +40,7 @@ export class RoomManager {
     });
   }
 
-  async joinRoom(roomId: RoomId, peerId: string): Promise<{ routerRtpCapabilities: RtpCapabilities }> {
+  async joinRoom(roomId: RoomId, peerId: string, sessionId?: string): Promise<{ routerRtpCapabilities: RtpCapabilities }> {
     const { router } = await this.routers.getOrCreate(roomId);
 
     // A reconnect with the same peerId must replace the previous peer to avoid stale producers/transports.
@@ -49,7 +49,7 @@ export class RoomManager {
       logger.info({ roomId, peerId }, 'peer_replaced_on_rejoin');
     }
 
-    this.peers.getOrCreate(roomId, peerId);
+    this.peers.getOrCreate(roomId, peerId, sessionId);
 
     if (!this.rooms.has(roomId)) {
       this.rooms.set(roomId, {
@@ -206,8 +206,8 @@ export class RoomManager {
     return producers;
   }
 
-  disconnectPeer(roomId: RoomId, peerId: string): void {
-    const removed = this.peers.remove(roomId, peerId);
+  disconnectPeer(roomId: RoomId, peerId: string, sessionId?: string): void {
+    const removed = this.peers.remove(roomId, peerId, sessionId);
     if (!removed) {
       return;
     }

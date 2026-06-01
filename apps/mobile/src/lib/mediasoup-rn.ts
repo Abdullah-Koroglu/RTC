@@ -23,6 +23,14 @@ registerGlobals();
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mediasoupClient = require('mediasoup-client') as typeof import('mediasoup-client');
 
+function createMediaSessionId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+  return `media-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export interface MediasoupRNClientOptions {
   baseUrl: string;
   apiBaseUrl: string;
@@ -56,6 +64,7 @@ export class MediasoupRNClient {
   private screenProducer: any = null;
   private turnCredentials: TurnCredentials | null = null;
   private appStateSubscription: ReturnType<typeof AppState.addEventListener> | null = null;
+  private readonly mediaSessionId = createMediaSessionId();
 
   constructor(private readonly options: MediasoupRNClientOptions) {}
 
@@ -65,7 +74,7 @@ export class MediasoupRNClient {
     const joinResponse = await this.apiCall(
       'POST',
       `/rooms/${this.options.roomId}/peers/${this.options.peerId}/join`,
-      {},
+      { sessionId: this.mediaSessionId },
     );
 
     await this.device.load({ routerRtpCapabilities: joinResponse.routerRtpCapabilities });
@@ -302,7 +311,7 @@ export class MediasoupRNClient {
 
   private async notifyLeave(): Promise<void> {
     try {
-      await this.apiCall('DELETE', `/rooms/${this.options.roomId}/peers/${this.options.peerId}`, {});
+      await this.apiCall('DELETE', `/rooms/${this.options.roomId}/peers/${this.options.peerId}?sessionId=${encodeURIComponent(this.mediaSessionId)}`, {});
     } catch {
       // best-effort
     }

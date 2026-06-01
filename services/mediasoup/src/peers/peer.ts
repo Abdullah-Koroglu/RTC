@@ -5,7 +5,10 @@ export class Peer {
   readonly producers = new Map<string, Producer>();
   readonly consumers = new Map<string, Consumer>();
 
-  constructor(public readonly id: string) {}
+  constructor(
+    public readonly id: string,
+    public readonly sessionId?: string,
+  ) {}
 
   close(): void {
     for (const consumer of this.consumers.values()) {

@@ -17,7 +17,8 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   app.post('/rooms/:roomId/peers/:peerId/join', async (request) => {
     const params = roomPeerParams.parse(request.params);
-    return ctx.roomManager.joinRoom(params.roomId, params.peerId);
+    const body = z.object({ sessionId: z.string().min(1).optional() }).parse(request.body ?? {});
+    return ctx.roomManager.joinRoom(params.roomId, params.peerId, body.sessionId);
   });
 
   app.post('/rooms/:roomId/peers/:peerId/transports', async (request) => {
@@ -98,7 +99,8 @@ export function registerRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   app.delete('/rooms/:roomId/peers/:peerId', async (request) => {
     const params = roomPeerParams.parse(request.params);
-    ctx.roomManager.disconnectPeer(params.roomId, params.peerId);
+    const query = z.object({ sessionId: z.string().min(1).optional() }).parse(request.query);
+    ctx.roomManager.disconnectPeer(params.roomId, params.peerId, query.sessionId);
     return { ok: true };
   });
 }

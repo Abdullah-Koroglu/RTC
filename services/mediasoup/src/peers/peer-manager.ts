@@ -3,7 +3,7 @@ import { Peer } from '@/peers/peer';
 export class PeerManager {
   private readonly peersByRoom = new Map<string, Map<string, Peer>>();
 
-  getOrCreate(roomId: string, peerId: string): Peer {
+  getOrCreate(roomId: string, peerId: string, sessionId?: string): Peer {
     let roomPeers = this.peersByRoom.get(roomId);
     if (!roomPeers) {
       roomPeers = new Map();
@@ -12,7 +12,7 @@ export class PeerManager {
 
     let peer = roomPeers.get(peerId);
     if (!peer) {
-      peer = new Peer(peerId);
+      peer = new Peer(peerId, sessionId);
       roomPeers.set(peerId, peer);
     }
 
@@ -23,7 +23,7 @@ export class PeerManager {
     return this.peersByRoom.get(roomId)?.get(peerId);
   }
 
-  remove(roomId: string, peerId: string): boolean {
+  remove(roomId: string, peerId: string, sessionId?: string): boolean {
     const roomPeers = this.peersByRoom.get(roomId);
     if (!roomPeers) {
       return false;
@@ -31,6 +31,10 @@ export class PeerManager {
 
     const peer = roomPeers.get(peerId);
     if (!peer) {
+      return false;
+    }
+
+    if (sessionId !== undefined && peer.sessionId !== sessionId) {
       return false;
     }
 
