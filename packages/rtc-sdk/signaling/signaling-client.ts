@@ -69,6 +69,7 @@ export type InboundSignalingEvent =
   | { type: 'room.unmute-requested'; roomId: string; kind: 'audio' | 'video' | 'both' }
   | { type: 'room.hand-raised'; roomId: string; participantId: string; displayName: string }
   | { type: 'room.hand-lowered'; roomId: string; participantId: string }
+  | { type: 'room.ended'; roomId: string; reason: 'ended' | 'expired'; endedAt?: string }
   | { type: 'producer.new'; roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' }
   | { type: 'producer.closed'; roomId: string; peerId: string; producerId: string }
   | { type: 'pong'; ts: number }
@@ -148,6 +149,7 @@ export interface SignalingClientEventMap {
   'room.unmute-requested': { roomId: string; kind: 'audio' | 'video' | 'both' };
   'room.hand-raised': { roomId: string; participantId: string; displayName: string };
   'room.hand-lowered': { roomId: string; participantId: string };
+  'room.ended': { roomId: string; reason: 'ended' | 'expired'; endedAt?: string };
   'producer.new': { roomId: string; peerId: string; producerId: string; kind: 'audio' | 'video' };
   'producer.closed': { roomId: string; peerId: string; producerId: string };
   'reconnect.scheduled': { delayMs: number; attempt: number };
@@ -660,6 +662,12 @@ export class SignalingClient {
         this.emitter.emit('room.hand-raised', { roomId: message.roomId, participantId: message.participantId, displayName: message.displayName });
       } else if (message.type === 'room.hand-lowered') {
         this.emitter.emit('room.hand-lowered', { roomId: message.roomId, participantId: message.participantId });
+      } else if (message.type === 'room.ended') {
+        this.emitter.emit('room.ended', {
+          roomId: message.roomId,
+          reason: message.reason,
+          ...(message.endedAt !== undefined ? { endedAt: message.endedAt } : {}),
+        });
       } else if (message.type === 'producer.new') {
         this.emitter.emit('producer.new', {
           roomId: message.roomId,

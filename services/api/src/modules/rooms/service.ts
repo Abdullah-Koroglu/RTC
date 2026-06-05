@@ -10,10 +10,12 @@ export interface RoomInfo {
   roomCode: string;
   hostUserId: string | null;
   type: RoomType;
+  status: 'active' | 'expired' | 'ended';
   isLocked: boolean;
   isExpired: boolean;
   expiresAt: string;
   createdAt: string;
+  endedAt: string | null;
 }
 
 type DbRoom = {
@@ -28,15 +30,19 @@ type DbRoom = {
 };
 
 function mapRoom(row: DbRoom): RoomInfo {
+  const ended = row.ended_at !== null;
+  const expired = new Date(row.expires_at) < new Date();
   return {
     id: row.id,
     roomCode: row.room_code,
     hostUserId: row.host_user_id,
     type: row.type as RoomType,
+    status: ended ? 'ended' : expired ? 'expired' : 'active',
     isLocked: row.is_locked,
-    isExpired: row.ended_at !== null || new Date(row.expires_at) < new Date(),
+    isExpired: ended || expired,
     expiresAt: row.expires_at,
     createdAt: row.created_at,
+    endedAt: row.ended_at,
   };
 }
 
@@ -227,6 +233,14 @@ export async function resolveJoinRequestByPeer(
   );
 }
 
-export async function endRoom(app: FastifyInstance, roomCode: string): Promise<void> {
-  await app.db.query(`UPDATE rooms SET ended_at = now() WHERE room_code = $1`, [roomCode]);
+export async function endRoom(app: FastifyInstance, roomCode: string): Promise<RoomInfo | null> {
+  const result = await app.db.query<DbRoom>(
+    `UPDATE rooms
+     SET ended_at = COALESCE(ended_at, now())
+     WHERE room_code = $1
+     RETURNING id, room_code, host_user_id, type, is_locked, expires_at, created_at, ended_at`,
+    [roomCode],
+  );
+  const row = result.rows[0];
+  return row ? mapRoom(row) : null;
 }

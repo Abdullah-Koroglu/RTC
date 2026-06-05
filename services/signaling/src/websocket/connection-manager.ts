@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { WebSocket } from 'ws';
-import type { ConnectionState } from '@/types/connection';
+import type { AuthContext, ConnectionState } from '@/types/connection';
 
 export class ConnectionManager {
   private readonly byId = new Map<string, ConnectionState>();
@@ -17,7 +17,13 @@ export class ConnectionManager {
     return undefined;
   }
 
-  register(socket: WebSocket, participantId: string, nodeId: string, recoveryToken: string): ConnectionState {
+  register(
+    socket: WebSocket,
+    participantId: string,
+    nodeId: string,
+    recoveryToken: string,
+    auth?: AuthContext,
+  ): ConnectionState {
     const connection: ConnectionState = {
       connectionId: randomUUID(),
       participantId,
@@ -27,6 +33,7 @@ export class ConnectionManager {
       lastHeartbeatAt: Date.now(),
       isAlive: true,
       nodeId,
+      ...(auth ? { auth } : {}),
     };
 
     this.byId.set(connection.connectionId, connection);

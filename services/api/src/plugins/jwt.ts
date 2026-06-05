@@ -7,10 +7,12 @@ declare module '@fastify/jwt' {
     payload: {
       sub: string;
       role?: string;
+      roomId?: string;
     };
     user: {
       sub: string;
       role?: string;
+      roomId?: string;
     };
   }
 }

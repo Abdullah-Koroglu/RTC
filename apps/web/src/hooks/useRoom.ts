@@ -131,6 +131,7 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
 
   const signalingOptions = {
     participantId: peerId,
+    roomId,
     autoConnect: true,
     reconnect: {
       maxAttempts: Number.MAX_SAFE_INTEGER,
@@ -889,6 +890,37 @@ export function useRoom(options: UseRoomOptions): UseRoomReturn {
     listeners.push(
       signalingClient.on('room.host-transferred', ({ newHostPeerId }) => {
         setHostPeerId(newHostPeerId);
+      }),
+    );
+
+    listeners.push(
+      signalingClient.on('room.ended', ({ reason }) => {
+        remoteStreamsRef.current.forEach((stream) => {
+          stream.getTracks().forEach((track) => track.stop());
+        });
+        setRemoteStreams(new Map());
+
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach((track) => track.stop());
+          localStreamRef.current = null;
+        }
+        setLocalStream(null);
+
+        if (screenStreamRef.current) {
+          screenStreamRef.current.getTracks().forEach((track) => track.stop());
+          screenStreamRef.current = null;
+        }
+        setScreenStream(null);
+        setIsScreenSharing(false);
+
+        if (mediaClientRef.current) {
+          void mediaClientRef.current.close().finally(() => {
+            mediaClientRef.current = null;
+          });
+        }
+
+        setError(new Error(reason === 'expired' ? 'Room expired' : 'Room ended'));
+        setRoomState('error');
       }),
     );
 

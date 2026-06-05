@@ -54,6 +54,21 @@ async function bootstrap(): Promise<void> {
     return reply.send({ ok: true });
   });
 
+  app.post('/internal/rooms/:roomId/end', async (request, reply) => {
+    const auth = request.headers.authorization;
+    const userId = request.headers['x-user-id'];
+    if (!auth || auth !== `Bearer ${env.INTERNAL_API_SECRET}`) {
+      return reply.code(401).send({ code: 'UNAUTHORIZED', message: 'Invalid internal secret' });
+    }
+    if (!userId || typeof userId !== 'string') {
+      return reply.code(400).send({ code: 'BAD_REQUEST', message: 'x-user-id header required' });
+    }
+
+    const { roomId } = z.object({ roomId: z.string().min(1) }).parse(request.params);
+    await gateway.handleRoomEndedNotification(roomId, new Date().toISOString());
+    return reply.send({ ok: true, roomId });
+  });
+
   // REST endpoint to query current room participants
   app.get<{ Params: { roomId: string } }>('/rooms/:roomId/participants', async (request) => ({
     participants: await roomManager.getParticipants(request.params.roomId),

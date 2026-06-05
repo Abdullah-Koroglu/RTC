@@ -9,10 +9,12 @@ export interface ConnectionState {
   lastHeartbeatAt: number;
   isAlive: boolean;
   nodeId: string;
+  auth?: AuthContext;
 }
 
 export interface AuthContext {
   participantId: string;
   sessionId?: string;
   role?: string;
+  roomId?: string;
 }

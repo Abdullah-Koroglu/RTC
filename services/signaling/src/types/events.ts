@@ -237,6 +237,12 @@ export type OutboundEvent =
       participantId: string;
     }
   | {
+      type: 'room.ended';
+      roomId: string;
+      reason: 'ended' | 'expired';
+      endedAt?: string;
+    }
+  | {
       type: 'producer.new';
       roomId: string;
       peerId: string;

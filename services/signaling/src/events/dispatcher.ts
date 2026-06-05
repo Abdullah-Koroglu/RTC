@@ -25,7 +25,7 @@ export class EventDispatcher {
 
   async publishRoomEvent(
     roomId: string,
-    event: Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' | 'producer.new' | 'producer.closed' | 'room.locked' | 'room.host-transferred' }>,
+    event: Extract<OutboundEvent, { type: 'room.participant-joined' | 'room.participant-left' | 'room.participant-state-updated' | 'signal.relay' | 'producer.new' | 'producer.closed' | 'room.locked' | 'room.host-transferred' | 'room.ended' }>,
   ): Promise<void> {
     const envelope: DistributedRoomEvent = {
       eventId: randomUUID(),
@@ -44,6 +44,15 @@ export class EventDispatcher {
       return;
     }
 
+    const connectionIds = this.rooms.getConnectionIds(envelope.roomId);
     this.broadcastToRoom(envelope.roomId, envelope.event);
+
+    if (envelope.event.type === 'room.ended') {
+      for (const connectionId of connectionIds) {
+        const conn = this.connections.getById(connectionId);
+        conn?.rooms.delete(envelope.roomId);
+      }
+      void this.rooms.closeRoom(envelope.roomId);
+    }
   }
 }

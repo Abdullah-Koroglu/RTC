@@ -2,8 +2,9 @@ import { SignalingClient } from '@repo/rtc-sdk';
 import { getSession } from 'next-auth/react';
 
 let instance: SignalingClient | null = null;
+let instanceKey: { participantId: string; roomId: string } | null = null;
 
-async function fetchSignalingToken(participantId: string): Promise<string> {
+async function fetchSignalingToken(participantId: string, roomId: string): Promise<string> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
   // Always use the client-generated participantId as the JWT subject so that the
@@ -11,8 +12,8 @@ async function fetchSignalingToken(participantId: string): Promise<string> {
   // Authenticated users get an additional `role` claim for access control.
   const session = await getSession();
   const body = session?.user
-    ? { subject: participantId, role: 'user' }
-    : { subject: participantId };
+    ? { subject: participantId, role: 'user', roomId }
+    : { subject: participantId, roomId };
 
   const response = await fetch(`${apiUrl}/v1/auth/login`, {
     method: 'POST',
@@ -30,17 +31,30 @@ async function fetchSignalingToken(participantId: string): Promise<string> {
 
 export async function initializeSignalingClient(options: {
   participantId: string;
+  roomId: string;
   reconnect?: {
     maxAttempts: number;
     baseDelayMs: number;
     maxDelayMs: number;
   };
 }): Promise<SignalingClient> {
-  if (instance) {
+  if (
+    instance
+    && instanceKey
+    && instanceKey.participantId === options.participantId
+    && instanceKey.roomId === options.roomId
+  ) {
     return instance;
   }
 
-  const token = await fetchSignalingToken(options.participantId);
+  if (instance) {
+    await instance.disconnect('room-scope-changed');
+    instance.dispose();
+    instance = null;
+    instanceKey = null;
+  }
+
+  const token = await fetchSignalingToken(options.participantId, options.roomId);
   const signalingUrl = process.env.NEXT_PUBLIC_SIGNALING_URL ?? 'ws://localhost:4010/ws';
 
   instance = new SignalingClient({
@@ -48,6 +62,10 @@ export async function initializeSignalingClient(options: {
     url: signalingUrl,
     token,
   });
+  instanceKey = {
+    participantId: options.participantId,
+    roomId: options.roomId,
+  };
 
   await instance.connect();
   return instance;
@@ -65,4 +83,5 @@ export async function disconnectSignalingClient(reason?: string): Promise<void> 
   await instance.disconnect(reason);
   instance.dispose();
   instance = null;
+  instanceKey = null;
 }

@@ -35,6 +35,7 @@ export class RoomManager {
   private readonly bannedPeers = new Map<string, Set<string>>();
   // roomId → Set of peerIds with hand raised
   private readonly raisedHands = new Map<string, Set<string>>();
+  private readonly endedRooms = new Set<string>();
 
   constructor(redis: Redis | null = null, ttlSeconds?: number) {
     this.redis = redis;
@@ -103,6 +104,18 @@ export class RoomManager {
         });
       }
     }
+  }
+
+  markEnded(roomId: string): void {
+    this.endedRooms.add(roomId);
+  }
+
+  clearEnded(roomId: string): void {
+    this.endedRooms.delete(roomId);
+  }
+
+  isEnded(roomId: string): boolean {
+    return this.endedRooms.has(roomId);
   }
 
   async leave(roomId: string, connectionId: string): Promise<RoomRosterParticipant | undefined> {
@@ -356,5 +369,36 @@ export class RoomManager {
       locked: this.isLocked(roomId),
       raisedHands: this.getRaisedHands(roomId),
     };
+  }
+
+  async closeRoom(roomId: string): Promise<RoomRosterParticipant[]> {
+    const participants = await this.getParticipants(roomId);
+
+    for (const participant of participants) {
+      const rooms = this.connectionRooms.get(participant.connectionId);
+      rooms?.delete(roomId);
+      if (rooms && rooms.size === 0) {
+        this.connectionRooms.delete(participant.connectionId);
+      }
+    }
+
+    this.roomConnections.delete(roomId);
+    this.localRooms.delete(roomId);
+    this.roomHosts.delete(roomId);
+    this.roomLocked.delete(roomId);
+    this.approvedPeers.delete(roomId);
+    this.bannedPeers.delete(roomId);
+    this.raisedHands.delete(roomId);
+    this.markEnded(roomId);
+
+    if (this.redis) {
+      const keys = participants.map((participant) => this.participantKey(roomId, participant.participantId));
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+      }
+      await this.redis.del(this.idsKey(roomId));
+    }
+
+    return participants;
   }
 }

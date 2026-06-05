@@ -25,7 +25,11 @@ export function authRoutes(app: FastifyInstance): void {
       const payload = loginBodySchema.parse(request.body);
       const subject = payload.subject ?? payload.peerId;
       if (!subject) throw new Error('subject or peerId is required');
-      return issueToken(app, { subject, ...(payload.role ? { role: payload.role } : {}) });
+      return issueToken(app, {
+        subject,
+        ...(payload.role ? { role: payload.role } : {}),
+        ...(payload.roomId ? { roomId: payload.roomId } : {}),
+      });
     },
   );
 

@@ -19,5 +19,6 @@ export async function authenticateToken(token: string): Promise<AuthContext> {
     participantId,
     sessionId: typeof payload.sid === 'string' ? payload.sid : undefined,
     role: typeof payload.role === 'string' ? payload.role : undefined,
+    roomId: typeof payload.roomId === 'string' ? payload.roomId : undefined,
   };
 }

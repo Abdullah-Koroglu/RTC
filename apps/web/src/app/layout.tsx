@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/components/AuthProvider';
 import './globals.css';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -33,7 +30,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="tr">
-      <body className={`${inter.className} antialiased bg-[#0a0c14] text-slate-100`}>
+      <body className="antialiased bg-[#0a0c14] text-slate-100">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

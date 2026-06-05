@@ -18,6 +18,7 @@ import {
   getPendingJoinRequests,
   resolveJoinRequest,
   resolveJoinRequestByPeer,
+  endRoom,
 } from '@/modules/rooms/service';
 
 export async function roomRoutes(app: FastifyInstance): Promise<void> {
@@ -135,5 +136,39 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
     const result = await resolveJoinRequest(app, id, action);
     if (!result) return reply.code(404).send({ code: 'NOT_FOUND', message: 'Request not found or already resolved' });
     return { ok: true, peerId: result.peerId };
+  });
+
+  // Force-end a room and notify signaling to evict active participants.
+  app.post('/rooms/:code/end', { preHandler: [app.authenticateInternal] }, async (request, reply) => {
+    const { code } = request.params as { code: string };
+    const room = await endRoom(app, code);
+    if (!room) {
+      return reply.code(404).send({ code: 'NOT_FOUND', message: 'Room not found' });
+    }
+
+    let signalingNotified = false;
+    if (env.SIGNALING_INTERNAL_URL) {
+      try {
+        const res = await fetch(`${env.SIGNALING_INTERNAL_URL}/internal/rooms/${code}/end`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.INTERNAL_API_SECRET}`,
+            'x-user-id': request.internalUserId,
+          },
+        });
+        signalingNotified = res.ok;
+        if (!res.ok) {
+          app.log.warn({ code, status: res.status }, 'signaling_room_end_notify_failed');
+        }
+      } catch (err: unknown) {
+        app.log.warn({ err, code }, 'signaling_room_end_notify_error');
+      }
+    }
+
+    return reply.send({
+      ok: true,
+      room,
+      signalingNotified,
+    });
   });
 }

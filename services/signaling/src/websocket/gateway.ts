@@ -5,6 +5,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { FastifyInstance } from 'fastify';
 import { env } from '@/config/env';
 import { inboundEventSchema, type InboundEvent, type OutboundEvent } from '@/types/events';
+import type { AuthContext } from '@/types/connection';
 import { authenticateToken } from '@/websocket/auth';
 import { ConnectionManager } from '@/websocket/connection-manager';
 import { RoomManager } from '@/rooms/room-manager';
@@ -55,7 +56,7 @@ export class WebSocketGateway {
     });
 
     this.server.on('connection', (socket, request, auth) => {
-      this.onConnection(socket, request, auth.participantId);
+      this.onConnection(socket, request, auth);
     });
 
     this.startHeartbeat();
@@ -90,6 +91,28 @@ export class WebSocketGateway {
         });
       }
     }
+  }
+
+  async handleRoomEndedNotification(roomId: string, endedAt: string): Promise<void> {
+    const participants = await this.rooms.getParticipants(roomId);
+    this.waitingRoom.delete(roomId);
+
+    await this.dispatcher.publishRoomEvent(roomId, {
+      type: 'room.ended',
+      roomId,
+      reason: 'ended',
+      endedAt,
+    });
+
+    for (const participant of participants) {
+      const conn = this.connections.getById(participant.connectionId);
+      if (conn) {
+        conn.rooms.delete(roomId);
+      }
+      void this.evictMediasoupPeer(roomId, participant.participantId);
+    }
+
+    await this.rooms.closeRoom(roomId);
   }
 
   async handleProducerNew(roomId: string, peerId: string, producerId: string, kind: 'audio' | 'video'): Promise<void> {
@@ -138,11 +161,11 @@ export class WebSocketGateway {
     }
   }
 
-  private onConnection(socket: WebSocket, request: IncomingMessage, participantId: string): void {
-    const recoveryToken = this.createRecoveryToken(participantId, randomUUID());
-    const conn = this.connections.register(socket, participantId, this.nodeId, recoveryToken);
+  private onConnection(socket: WebSocket, request: IncomingMessage, auth: AuthContext): void {
+    const recoveryToken = this.createRecoveryToken(auth.participantId, randomUUID());
+    const conn = this.connections.register(socket, auth.participantId, this.nodeId, recoveryToken, auth);
     this.recovery.set(recoveryToken, {
-      participantId,
+      participantId: auth.participantId,
       roomIds: [],
       expiresAt: Date.now() + 2 * 60_000,
     });
@@ -150,7 +173,7 @@ export class WebSocketGateway {
     this.send(socket, {
       type: 'session.ready',
       connectionId: conn.connectionId,
-      participantId,
+      participantId: auth.participantId,
       recoveryToken,
     });
 
@@ -199,7 +222,7 @@ export class WebSocketGateway {
     this.app.log.info(
       {
         connectionId: conn.connectionId,
-        participantId,
+        participantId: auth.participantId,
         ip: request.socket.remoteAddress,
       },
       'ws_connected',
@@ -247,6 +270,27 @@ export class WebSocketGateway {
     }
 
     if (event.type === 'room.join') {
+      const authRoomId = conn.auth?.roomId;
+      if (!authRoomId) {
+        this.send(conn.socket, { type: 'error', code: 'TOKEN_ROOM_REQUIRED', message: 'This token is not bound to a room' });
+        return;
+      }
+      if (authRoomId !== event.roomId) {
+        this.send(conn.socket, { type: 'error', code: 'TOKEN_ROOM_MISMATCH', message: 'This token cannot join the requested room' });
+        return;
+      }
+
+      const roomLookup = await this.getRoomInfo(event.roomId);
+      if ('error' in roomLookup) {
+        this.send(conn.socket, {
+          type: 'error',
+          ...(event.requestId !== undefined ? { requestId: event.requestId } : {}),
+          code: roomLookup.error.code,
+          message: roomLookup.error.message,
+        } as Parameters<typeof this.send>[1]);
+        return;
+      }
+
       const isNewJoiner = !this.rooms.has(event.roomId, conn.connectionId);
       const isApproved = this.rooms.isApproved(event.roomId, conn.participantId);
 
@@ -265,7 +309,7 @@ export class WebSocketGateway {
           return;
         }
         // Password-protected room: verify before allowing entry
-        const pwErr = await this.checkRoomPassword(event.roomId, conn.participantId, event.password);
+        const pwErr = await this.checkRoomPassword(roomLookup.room, conn.participantId, event.password);
         if (pwErr) {
           this.send(conn.socket, { type: 'error', ...(event.requestId !== undefined ? { requestId: event.requestId } : {}), code: pwErr.code, message: pwErr.message } as Parameters<typeof this.send>[1]);
           return;
@@ -591,19 +635,11 @@ export class WebSocketGateway {
   }
 
   private async checkRoomPassword(
-    roomCode: string,
+    roomInfo: { roomCode: string; type: string; hostUserId: string | null },
     participantId: string,
     password: string | undefined,
   ): Promise<{ code: string; message: string } | null> {
-    let roomInfo: { type: string; hostUserId: string | null } | null = null;
-    try {
-      const res = await fetch(`${env.API_INTERNAL_URL}/v1/rooms/${roomCode}`);
-      if (res.ok) roomInfo = await res.json() as { type: string; hostUserId: string | null };
-    } catch {
-      return null; // API unreachable — don't block the join
-    }
-
-    if (!roomInfo || roomInfo.type !== 'password') return null;
+    if (roomInfo.type !== 'password') return null;
 
     // Logged-in host's participantId === their userId (UUID) — bypass password
     if (roomInfo.hostUserId && roomInfo.hostUserId === participantId) return null;
@@ -613,7 +649,7 @@ export class WebSocketGateway {
     }
 
     try {
-      const verifyRes = await fetch(`${env.API_INTERNAL_URL}/v1/rooms/${roomCode}/verify-password`, {
+      const verifyRes = await fetch(`${env.API_INTERNAL_URL}/v1/rooms/${roomInfo.roomCode}/verify-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
@@ -622,10 +658,46 @@ export class WebSocketGateway {
       const { valid } = await verifyRes.json() as { valid: boolean };
       if (!valid) return { code: 'WRONG_PASSWORD', message: 'Incorrect room password' };
     } catch {
-      return null; // API unreachable — don't block the join
+      return { code: 'ROOM_UNAVAILABLE', message: 'Room access could not be verified' };
     }
 
     return null;
+  }
+
+  private async getRoomInfo(roomCode: string): Promise<
+    | { room: { roomCode: string; type: string; hostUserId: string | null; isExpired: boolean; status?: string } }
+    | { error: { code: string; message: string } }
+  > {
+    try {
+      const res = await fetch(`${env.API_INTERNAL_URL}/v1/rooms/${roomCode}`);
+      if (res.status === 404) {
+        return { error: { code: 'ROOM_NOT_FOUND', message: 'Room not found' } };
+      }
+      if (!res.ok) {
+        return { error: { code: 'ROOM_UNAVAILABLE', message: 'Room access could not be verified' } };
+      }
+
+      const room = await res.json() as {
+        roomCode: string;
+        type: string;
+        hostUserId: string | null;
+        isExpired: boolean;
+        status?: string;
+      };
+
+      if (room.isExpired) {
+        return {
+          error: {
+            code: room.status === 'expired' ? 'ROOM_EXPIRED' : 'ROOM_ENDED',
+            message: room.status === 'expired' ? 'This room has expired' : 'This room has ended',
+          },
+        };
+      }
+
+      return { room };
+    } catch {
+      return { error: { code: 'ROOM_UNAVAILABLE', message: 'Room access could not be verified' } };
+    }
   }
 
   private notifyApiJoinDecision(roomId: string, peerId: string, action: 'approve' | 'deny'): Promise<void> {

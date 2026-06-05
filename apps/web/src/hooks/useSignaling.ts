@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { SignalingClient } from '@repo/rtc-sdk';
-import { initializeSignalingClient, getSignalingClient, disconnectSignalingClient } from '@/lib/signaling';
+import { initializeSignalingClient, disconnectSignalingClient } from '@/lib/signaling';
 
 export interface UseSignalingOptions {
   participantId: string;
+  roomId: string;
   autoConnect?: boolean;
   reconnect?: {
     maxAttempts: number;
@@ -45,15 +46,9 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
       setIsConnecting(true);
       setError(null);
 
-      const existingClient = getSignalingClient();
-      if (existingClient?.isConnected()) {
-        setClient(existingClient);
-        setIsConnected(true);
-        return;
-      }
-
       const newClient = await initializeSignalingClient({
         participantId: options.participantId,
+        roomId: options.roomId,
         ...(options.reconnect && { reconnect: options.reconnect }),
       });
 
@@ -106,7 +101,7 @@ export function useSignaling(options: UseSignalingOptions): UseSignalingReturn {
     } finally {
       setIsConnecting(false);
     }
-  }, [options.participantId, options.reconnect]);
+  }, [options.participantId, options.roomId, options.reconnect]);
 
   const disconnect = useCallback(async (reason?: string) => {
     unsubsRef.current.forEach((unsub) => unsub());
